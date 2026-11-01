@@ -4,86 +4,71 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ApplicationWindow {
-    id: window
+  id: window
 
-    visible: true
+  visible: true
 
-    width: 1100
-    height: 720
+  width: 1200
+  height: 760
 
-    minimumWidth: 800
-    minimumHeight: 500
+  minimumWidth: 900
+  minimumHeight: 600
 
-    title: appController.appName
+  title: appController.appName
 
-    color: "#20242b"
+  color: "#1C222B"
 
-    ColumnLayout {
-        anchors.centerIn: parent
-        spacing: 16
+  property int selectedChatIndex: 0
+  property string activeSection: "chats"
 
-        Label {
-            text: appController.appName
+  property var selectedChat: chatsModel.get(selectedChatIndex)
 
-            font.pixelSize: 28
-            font.bold: true
+  ListModel {
+    id: chatsModel
 
-            color: "white"
+    ListElement {
+      name: "Alex Morgan"
+      lastMessage: "Hello, sup lol"
+      time: "10:59"
+      initials: "AM"
+      avatarColor: "#526C8A"
+    }
+  }
 
-            Layout.alignment: Qt.AlignHCenter
-        }
+  RowLayout {
+    anchors.fill: parent
+    spacing: 0
 
-        Label {
-            text: appController.appVersion
-            color: "#aab2bf"
+    Sidebar {
+      Layout.preferredWidth: 68
+      Layout.fillHeight: true
 
-            Layout.alignment: Qt.AlignHCenter
-        }
-
-        Rectangle {
-            Layout.preferredWidth: 350
-            Layout.preferredHeight: 100
-
-            radius: 10
-            color: "#303640"
-
-            Label {
-                anchors.centerIn: parent
-
-                text: appController.lastMessage
-
-                color: "white"
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        Button {
-            text: "Simulate incoming message"
-
-            Layout.alignment: Qt.AlignHCenter
-
-            onClicked: {
-                appController.simulateIncomingMessage()
-            }
-        }
-
-        Label {
-            id: eventLabel
-
-            text: "Waiting for messages..."
-
-            color: "#8b949e"
-
-            Layout.alignment: Qt.AlignHCenter
-        }
+      onNavigationRequested: function(page) {
+        window.activeSection = page
+        console.log("Navigation:", page)
+      }
     }
 
-    Connections {
-        target: appController
+    ChatList {
+      Layout.preferredWidth: 340
+      Layout.fillHeight: true
 
-        function onMessageReceived(message) {
-            eventLabel.text = "Received: " + message
-        }
+      chatModel: chatsModel
+      selectedChatIndex: window.selectedChatIndex
+
+      onChatSelected: function(index) {
+        window.selectedChatIndex = index
+      }
     }
+
+    ConversationPanel {
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+
+      chatName: window.selectedChat.name
+      chatInitials: window.selectedChat.initials
+      avatarColor: window.selectedChat.avatarColor
+      lastMessage: window.selectedChat.lastMessage
+    }
+  }
 }
-

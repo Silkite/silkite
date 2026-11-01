@@ -31,6 +31,9 @@ qt_add_qml_module(silkite
 
   QML_FILES
     src/qml/Main.qml
+    src/qml/Sidebar.qml
+    src/qml/ChatList.qml
+    src/qml/ConversationPanel.qml
 )
 
 target_link_libraries(silkite
