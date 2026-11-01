@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Rectangle {
   id: root
 
+  property string currentPage: "chats"
+
   signal navigationRequested(string page)
 
   color: "#202630"
@@ -33,20 +35,33 @@ Rectangle {
     ToolButton {
       text: "◉"
       font.pixelSize: 23
-      onClicked: root.navigationRequested("chats")
       Layout.alignment: Qt.AlignHCenter
+
+      background: Rectangle {
+        radius: 10
+        color: root.currentPage === "chats" ? "#414D5D" : "transparent"
+      }
+      onClicked: root.navigationRequested("chats")
     }
     ToolButton {
       text: "♧"
       font.pixelSize: 23
-      onClicked: root.navigationRequested("contacts")
       Layout.alignment: Qt.AlignHCenter
+      background: Rectangle {
+        radius: 10
+        color: root.currentPage === "contacts" ? "#414D5D" : "transparent"
+      }
+      onClicked: root.navigationRequested("contacts")
     }
     ToolButton {
       text: "◎"
       font.pixelSize: 23
-      onClicked: root.navigationRequested("calls")
       Layout.alignment: Qt.AlignHCenter
+      background: Rectangle {
+        radius: 10
+        color: root.currentPage === "calls" ? "#414D5D" : "transparent"
+      }
+      onClicked: root.navigationRequested("calls")
     }
     Item {
       Layout.fillHeight: true
@@ -54,8 +69,12 @@ Rectangle {
     ToolButton {
       text: "⚙"
       font.pixelSize: 23
-      onClicked: root.navigationRequested("settings")
       Layout.alignment: Qt.AlignHCenter
+      background: Rectangle {
+        radius: 10
+        color: root.currentPage === "settings" ? "#414D5D" : "transparent"
+      }
+      onClicked: root.navigationRequested("settings")
     }
 
 

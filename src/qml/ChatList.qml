@@ -1,138 +1,206 @@
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 Rectangle {
-  id: root
+    id: root
 
-  property var chatModel
-  property int selectedChatIndex: 0
+    property var chatModel
+    property int selectedChatIndex: 0
 
-  signal chatSelected(int index)
+    signal chatSelected(int index)
 
-  color: "#29313C"
+    color: "#29313C"
 
-  ColumnLayout {
-    anchors.fill: parent
-    anchors.margins: 14
-    spacing: 12
-    
-    Label {
-      text: "Chats"
-
-      font.pixelSize: 23
-      font.bold: true
-
-      color: "#FFFFFF"
+    // A real QML model for displaying filtered chats
+    ListModel {
+        id: filteredChatsModel
     }
 
-    TextField {
-      id: searchField
+    // Filter the original chat model
+    function updateFilteredChats() {
+        filteredChatsModel.clear()
 
-      Layout.fillWidth: true
-
-      placeholderText: "Search chats ..."
-      color: "#FFFFFF"
-
-      background: Rectangle {
-        radius: 9
-        color: "#202630"
-      }
-    }
-
-    ListView {
-      id: chatList
-
-      Layout.fillWidth: true
-      Layout.fillHeight: true
-
-      model: root.chatModel
-
-      spacing: 5
-
-      clip: true
-
-      delegate: ItemDelegate {
-        id: chatDelegate
-
-        required property string name
-        required property string lastMessage
-        required property string time
-        required property string initials
-        required property string avatarColor
-        required property int index
-
-        width: chatList.width
-        height: 76
-
-        background: Rectangle {
-          radius: 9
-
-          color: index === root.selectedChatIndex ? "#414D5D" : "transparent"
+        if (!root.chatModel) {
+            return
         }
 
-        onClicked: {
-          root.chatSelected(index)
-        }
+        const query = searchField.text.trim().toLowerCase()
 
-        contentItem: RowLayout {
-          spacing: 10
-          Rectangle {
-            Layout.preferredWidth: 44
-            Layout.preferredHeight: 44
 
-            radius: 22
+        for (let i = 0; i < root.chatModel.count; i++) {
+            const chat = root.chatModel.get(i)
 
-            color: chatDelegate.avatarColor
+            const matchesName =
+                chat.name.toLowerCase().includes(query)
 
-            Label {
-              anchors.centerIn: parent
+            const matchesMessage =
+                chat.lastMessage.toLowerCase().includes(query)
 
-              text: chatDelegate.initials
+            if (query === "" || matchesName || matchesMessage) {
+                filteredChatsModel.append({
+                    name: chat.name,
+                    lastMessage: chat.lastMessage,
+                    time: chat.time,
+                    initials: chat.initials,
+                    avatarColor: chat.avatarColor,
+                    unreadCount: chat.unreadCount,
 
-              color: "#FFFFFF"
-              font.bold: true
+                    // Preserve the original model index
+                    originalIndex: i
+                })
             }
-          }
+        }
 
-          ColumnLayout {
+    }
+
+    Component.onCompleted: updateFilteredChats()
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 14
+        spacing: 12
+
+        Label {
+            text: "Chats"
+            font.pixelSize: 23
+            font.bold: true
+            color: "#FFFFFF"
+        }
+
+        TextField {
+            id: searchField
+
             Layout.fillWidth: true
+            placeholderText: "Search chats..."
+            color: "#FFFFFF"
+            selectByMouse: true
+
+            onTextChanged: root.updateFilteredChats()
+
+            background: Rectangle {
+                radius: 9
+                color: "#202630"
+            }
+        }
+
+        ListView {
+            id: chatList
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            model: filteredChatsModel
             spacing: 5
+            clip: true
 
-            RowLayout {
-              Layout.fillWidth: true
+            delegate: ItemDelegate {
+                id: chatDelegate
 
-              Label {
-                text: chatDelegate.name
+                required property string name
+                required property string lastMessage
+                required property string time
+                required property string initials
+                required property string avatarColor
+                required property int unreadCount
+                required property int originalIndex
 
-                color: "#FFFFFF"
-                font.bold: true
+                width: chatList.width
+                height: 76
 
-                elide: Text.ElideRight
+                background: Rectangle {
+                    radius: 9
 
-                Layout.fillWidth: true
-              }
+                    color: chatDelegate.originalIndex === root.selectedChatIndex
+                           ? "#414D5D"
+                           : "transparent"
+                }
 
-              Label {
-                text: chatDelegate.time
+                onClicked: root.chatSelected(chatDelegate.originalIndex)
 
-                color: "#AAB3C0"
-                font.pixelSize: 10
-              }
+                contentItem: RowLayout {
+                    spacing: 10
+
+                    // Avatar
+                    Rectangle {
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        radius: 22
+                        color: chatDelegate.avatarColor
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: chatDelegate.initials
+                            color: "#FFFFFF"
+                            font.bold: true
+                        }
+                    }
+
+                    // Chat details
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+
+                            Label {
+                                text: chatDelegate.name
+                                color: "#FFFFFF"
+                                font.bold: true
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: chatDelegate.time
+                                color: "#AAB3C0"
+                                font.pixelSize: 10
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+
+                            Label {
+                                text: chatDelegate.lastMessage
+                                color: "#AAB3C0"
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                radius: 10
+                                color: "#82AFFF"
+
+                                visible: chatDelegate.unreadCount > 0
+
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: chatDelegate.unreadCount.toString()
+                                    color: "#202630"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Label {
-              text: chatDelegate.lastMessage
-
-              color: "#AAB3C0"
-
-              elide: Text.ElideRight
-
-              Layout.fillWidth: true
+                anchors.centerIn: parent
+                visible: chatList.count === 0
+                text: "No chats found"
+                color: "#AAB3C0"
+                font.pixelSize: 14
             }
-          }
         }
-      }
     }
-  }
 }
+

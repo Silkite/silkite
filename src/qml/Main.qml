@@ -1,4 +1,3 @@
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -27,11 +26,28 @@ ApplicationWindow {
     id: chatsModel
 
     ListElement {
-      name: "Alex Morgan"
+      name: "Tom Hollam"
       lastMessage: "Hello, sup lol"
       time: "10:59"
       initials: "AM"
       avatarColor: "#526C8A"
+      unreadCount: 2
+    }
+    ListElement {
+      name: "Jeffery Dahmer"
+      lastMessage: "Hello, sup lol"
+      time: "10:59"
+      initials: "AM"
+      avatarColor: "#526C8A"
+      unreadCount: 2
+    }
+    ListElement {
+      name: "Patrick Bateman"
+      lastMessage: "Hello, sup lol"
+      time: "10:59"
+      initials: "AM"
+      avatarColor: "#526C8A"
+      unreadCount: 2
     }
   }
 
@@ -42,6 +58,8 @@ ApplicationWindow {
     Sidebar {
       Layout.preferredWidth: 68
       Layout.fillHeight: true
+
+      currentPage: window.activeSection
 
       onNavigationRequested: function(page) {
         window.activeSection = page

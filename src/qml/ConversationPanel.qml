@@ -45,7 +45,6 @@ Rectangle {
             font.bold: true
           }
         }
-
         ColumnLayout {
           spacing: 3
 
