@@ -17,39 +17,10 @@ ApplicationWindow {
 
   color: "#1C222B"
 
-  property int selectedChatIndex: 0
+  property int selectedChatIndex: 1
   property string activeSection: "chats"
 
-  property var selectedChat: chatsModel.get(selectedChatIndex)
-
-  ListModel {
-    id: chatsModel
-
-    ListElement {
-      name: "Tom Hollam"
-      lastMessage: "Hello, sup lol"
-      time: "10:59"
-      initials: "AM"
-      avatarColor: "#526C8A"
-      unreadCount: 2
-    }
-    ListElement {
-      name: "Jeffery Dahmer"
-      lastMessage: "Hello, sup lol"
-      time: "10:59"
-      initials: "AM"
-      avatarColor: "#526C8A"
-      unreadCount: 2
-    }
-    ListElement {
-      name: "Patrick Bateman"
-      lastMessage: "Hello, sup lol"
-      time: "10:59"
-      initials: "AM"
-      avatarColor: "#526C8A"
-      unreadCount: 2
-    }
-  }
+  property var selectedChat: chatListModel.chatAt(selectedChatIndex)
 
   RowLayout {
     anchors.fill: parent
@@ -71,11 +42,11 @@ ApplicationWindow {
       Layout.preferredWidth: 340
       Layout.fillHeight: true
 
-      chatModel: chatsModel
+      chatModel: chatListModel
       selectedChatIndex: window.selectedChatIndex
 
       onChatSelected: function(index) {
-        window.selectedChatIndex = index
+        window.selectedChatIndex = chatId
       }
     }
 

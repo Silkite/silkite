@@ -23,6 +23,9 @@ qt_add_executable(silkite
   src/main.cpp
   src/app_controller.cpp
   src/app_controller.h
+
+  src/models/chat_list_model.cpp
+  src/models/chat_list_model.h
 )
 
 qt_add_qml_module(silkite

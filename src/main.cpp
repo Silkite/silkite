@@ -4,6 +4,7 @@
 #include <QQuickWindow>
 
 #include "app_controller.h"
+#include "models/chat_list_model.h"
 
 int main(int argc, char *argv[]) {
   QQuickWindow::setDefaultAlphaBuffer(true);
@@ -15,9 +16,12 @@ int main(int argc, char *argv[]) {
 
   AppController appController;
 
+  ChatListModel chatListModel;
+
   QQmlApplicationEngine engine;
 
   engine.rootContext()->setContextProperty("appController", &appController);
+  engine.rootContext()->setContextProperty("chatListModel", &chatListModel);
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
