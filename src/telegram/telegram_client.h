@@ -8,12 +8,12 @@
 
 #include "telegram_worker.h"
 
-class TelergramClient : public QObject {
+class TelegramClient : public QObject {
   Q_OBJECT
 
 public:
-  explicit TelergramClient(QObject *parent = nullptr);
-  ~TelergramClient() override;
+  explicit TelegramClient(QObject *parent = nullptr);
+  ~TelegramClient() override;
   void start();
 
 signals:

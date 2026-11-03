@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -5,6 +6,7 @@
 
 #include "app_controller.h"
 #include "models/chat_list_model.h"
+#include "telegram/telegram_client.h"
 
 int main(int argc, char *argv[]) {
   QQuickWindow::setDefaultAlphaBuffer(true);
@@ -18,6 +20,17 @@ int main(int argc, char *argv[]) {
 
   ChatListModel chatListModel;
 
+  TelegramClient telegramClient;
+
+  // listen tdlib
+  QObject::connect(
+      &telegramClient, &TelegramClient::versionReceived,
+      [](const QString &version) { qInfo() << "TDLib version:" << version; });
+
+  QObject::connect(
+      &telegramClient, &TelegramClient::errorOccured,
+      [](const QString &error) { qWarning() << "TDLib error: " << error; });
+
   QQmlApplicationEngine engine;
 
   engine.rootContext()->setContextProperty("appController", &appController);
@@ -28,6 +41,12 @@ int main(int argc, char *argv[]) {
       []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
   engine.loadFromModule("Silkite", "Main");
+
+  if (engine.rootObjects().isEmpty()) {
+    return -1;
+  }
+
+  telegramClient.start();
 
   return app.exec();
 }

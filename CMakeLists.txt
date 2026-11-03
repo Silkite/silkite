@@ -15,6 +15,11 @@ find_package(Qt6 REQUIRED COMPONENTS
   Qml
 )
 
+find_package(Td REQUIRED CONFIG
+  PATHS "$ENV{HOME}/Projects/dependencies/td/tdlib/lib/cmake/Td"
+  NO_DEFAULT_PATH
+)
+
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_policy(SET QTP0004 NEW)
@@ -26,6 +31,12 @@ qt_add_executable(silkite
 
   src/models/chat_list_model.cpp
   src/models/chat_list_model.h
+
+  src/telegram/telegram_client.cpp
+  src/telegram/telegram_client.h
+  src/telegram/telegram_worker.cpp
+  src/telegram/telegram_worker.h
+
 )
 
 qt_add_qml_module(silkite
@@ -39,8 +50,14 @@ qt_add_qml_module(silkite
     src/qml/ConversationPanel.qml
 )
 
+target_include_directories(silkite
+    PRIVATE
+        "$ENV{HOME}/Projects/dependencies/td/tdlib/include"
+)
+
 target_link_libraries(silkite
   PRIVATE
     Qt6::Quick
     Qt6::Qml
+    Td::TdStatic
 )

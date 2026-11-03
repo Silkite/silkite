@@ -4,9 +4,6 @@
 #pragma once
 
 #include <QThread>
-#include <qobject.h>
-#include <qthread.h>
-#include <qtmetamacros.h>
 
 class TelegramWorker : public QThread {
   Q_OBJECT
