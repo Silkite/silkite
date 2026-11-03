@@ -6,7 +6,7 @@
   <br/>
 </div>
 
-A lightweight Linux desktop application built with **C++20**, **Qt6**, and **QML**.
+A beautiful, cute telegram client built from scratch on top of TDlib
 
 ## Features
 
@@ -24,10 +24,15 @@ A lightweight Linux desktop application built with **C++20**, **Qt6**, and **QML
 
 ```bash
 # Configure and build
+cd ~/Projects/silkite
+# remove any preexisting build 
+rm -rf build
+#configure explicitly using gcc
+CC=gcc CXX=g++ \
 cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-
+#build
+cmake --build build --parallel 4
 # Run
 ./build/silkite
 ```
