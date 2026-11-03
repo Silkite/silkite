@@ -22,6 +22,44 @@ ApplicationWindow {
 
   property var selectedChat: chatListModel.chatAt(selectedChatIndex)
 
+  Rectangle {
+    anchors.fill: parent
+    color: "#1C222B"
+    z: 10
+    visible: telegramClient.authorizationState !== "ready"
+
+    ColumnLayout {
+      anchors.centerIn: parent
+      width: Math.min(parent.width - 80, 420)
+      spacing: 14
+
+      Label { text: "Sign in to Telegram"; color: "white"; font.pixelSize: 24; Layout.alignment: Qt.AlignHCenter }
+      Label {
+        text: telegramClient.authorizationState === "waitCode" ? "Enter the code sent by Telegram" : "Enter your phone number"
+        color: "#AAB3C0"; Layout.alignment: Qt.AlignHCenter
+      }
+      TextField {
+        id: authInput; Layout.fillWidth: true; color: "white"
+        placeholderText: telegramClient.authorizationState === "waitCode" ? "Code" : "+1234567890"
+        inputMethodHints: telegramClient.authorizationState === "waitCode" ? Qt.ImhDigitsOnly : Qt.ImhDialableCharactersOnly
+        background: Rectangle { radius: 8; color: "#29313C" }
+      }
+      Button {
+        text: "Continue"; Layout.alignment: Qt.AlignHCenter
+        enabled: telegramClient.authorizationState === "waitPhoneNumber" || telegramClient.authorizationState === "waitCode"
+        onClicked: {
+          if (telegramClient.authorizationState === "waitCode") telegramClient.submitCode(authInput.text)
+          else telegramClient.submitPhoneNumber(authInput.text)
+          authInput.clear()
+        }
+      }
+      Label {
+        text: telegramClient.authorizationState === "starting" || telegramClient.authorizationState === "waitTdlibParameters" ? "Waiting for TDLib configuration…" : ""
+        color: "#AAB3C0"; wrapMode: Text.WordWrap; Layout.fillWidth: true
+      }
+    }
+  }
+
   RowLayout {
     anchors.fill: parent
     spacing: 0
@@ -46,7 +84,7 @@ ApplicationWindow {
       selectedChatIndex: window.selectedChatIndex
 
       onChatSelected: function(index) {
-        window.selectedChatIndex = chatId
+        window.selectedChatIndex = index
       }
     }
 

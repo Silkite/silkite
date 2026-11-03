@@ -37,6 +37,23 @@ cmake --build build --parallel 4
 ./build/silkite
 ```
 
+## Telegram authentication
+
+Create an application at [my.telegram.org](https://my.telegram.org) and provide
+the credentials only at runtime. Silkite does not store or hardcode them:
+
+```bash
+export SILKITE_API_ID=123456
+export SILKITE_API_HASH='your-api-hash'
+./build/silkite
+```
+
+TDLib stores the session database under Qt's application data directory. An
+optional `SILKITE_DATABASE_KEY` environment value enables database encryption;
+it is passed directly to TDLib and is never logged. The UI accepts the phone
+number and then the Telegram login code. Two-factor password and later profile
+setup states are exposed by TDLib but are not part of this initial login UI.
+
 ## License
 
 MIT

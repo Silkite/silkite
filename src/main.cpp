@@ -28,13 +28,14 @@ int main(int argc, char *argv[]) {
       [](const QString &version) { qInfo() << "TDLib version:" << version; });
 
   QObject::connect(
-      &telegramClient, &TelegramClient::errorOccured,
+      &telegramClient, &TelegramClient::errorOccurred,
       [](const QString &error) { qWarning() << "TDLib error: " << error; });
 
   QQmlApplicationEngine engine;
 
   engine.rootContext()->setContextProperty("appController", &appController);
   engine.rootContext()->setContextProperty("chatListModel", &chatListModel);
+  engine.rootContext()->setContextProperty("telegramClient", &telegramClient);
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
