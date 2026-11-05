@@ -146,14 +146,17 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   const int i = indexOfChat(id);
   Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", {}, 0, 0} : m_chats.at(i);
   c.id = id;
-  if (v.contains("name")) c.name = v.value("name").toString();
+  if (v.contains("name") && !v.value("name").toString().isEmpty()) c.name = v.value("name").toString();
   if (v.contains("lastMessage")) c.lastMessage = v.value("lastMessage").toString();
-  if (v.contains("time")) c.time = v.value("time").toString();
+  if (v.contains("time") && !v.value("time").toString().isEmpty()) c.time = v.value("time").toString();
   if (v.contains("initials")) c.initials = v.value("initials").toString();
   if (v.contains("avatarColor")) c.avatarColor = v.value("avatarColor").toString();
-  if (v.contains("avatarPath")) c.avatarPath = v.value("avatarPath").toString();
+  if (v.contains("avatarPath") && !v.value("avatarPath").toString().isEmpty()) c.avatarPath = v.value("avatarPath").toString();
   if (v.contains("unreadCount")) c.unreadCount = v.value("unreadCount").toInt();
-  if (v.contains("order")) c.order = v.value("order").toLongLong();
+  if (v.contains("order")) {
+    const qint64 order = v.value("order").toLongLong();
+    if (order > 0 || c.order == 0) c.order = order;
+  }
   if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
   if (i < 0) m_chats.append(c); else m_chats[i] = c;
   std::sort(m_chats.begin(), m_chats.end(), [](const Chat &a, const Chat &b) { return a.order > b.order; });

@@ -21,6 +21,8 @@ public:
   void selectPhoneLogin();
   void selectQrLogin();
   void loadConversation(qint64 chatId, qint64 fromMessageId = 0, int limit = 50);
+  void sendMessage(qint64 chatId, const QString &text);
+  void viewMessage(qint64 chatId, qint64 messageId);
 
 protected:
   void run() override;
@@ -36,12 +38,17 @@ signals:
   void chatsReset();
   void messagesLoaded(qint64 chatId, const QVariantList &messages, bool hasMore);
   void messageReceived(qint64 chatId, const QVariantMap &message);
+  void messageSendSucceeded(qint64 chatId, qint64 oldMessageId, const QVariantMap &message);
+  void chatReadOutboxUpdated(qint64 chatId, qint64 lastReadOutboxMessageId);
+  void chatTyping(qint64 chatId, bool active);
 
 private:
-  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History };
+  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, ViewMessage };
   struct Command {
     CommandType type;
     QString value;
+    qint64 chatId = 0;
+    qint64 messageId = 0;
   };
   void enqueue(Command command);
   QMutex m_mutex;

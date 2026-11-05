@@ -22,8 +22,83 @@ TelegramClient::TelegramClient(QObject *parent)
           &TelegramClient::errorOccurred);
   connect(&m_worker, &TelegramWorker::chatUpdated, this, &TelegramClient::chatUpdated);
   connect(&m_worker, &TelegramWorker::chatsReset, this, &TelegramClient::chatsReset);
-  connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64, const QVariantList &messages, bool) { m_conversationMessages = messages; emit conversationMessagesChanged(); });
-  connect(&m_worker, &TelegramWorker::messageReceived, this, [this](qint64 chatId, const QVariantMap &message) { if (chatId != m_activeChatId) return; m_conversationMessages.append(message); emit conversationMessagesChanged(); });
+  connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64 chatId, const QVariantList &messages, bool hasMore) {
+    // A history request can finish after the user has already selected another chat.
+    // Never let that stale response replace the active conversation.
+    if (chatId != m_activeChatId) return;
+
+    if (m_conversationMessages.isEmpty()) {
+      m_conversationMessages = messages;
+    } else {
+      // Merge messages keeping them sorted by messageId ascending, avoiding duplicates
+      QMap<qint64, QVariantMap> map;
+      for (const auto &v : m_conversationMessages) {
+        const auto m = v.toMap();
+        map.insert(m.value("messageId").toLongLong(), m);
+      }
+      for (const auto &v : messages) {
+        const auto m = v.toMap();
+        map.insert(m.value("messageId").toLongLong(), m);
+      }
+      QVariantList merged;
+      for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        merged.append(it.value());
+      }
+      m_conversationMessages = merged;
+    }
+    emit conversationMessagesChanged();
+
+    // If TDLib only returned a small set (e.g. initial cache had only 1 message),
+    // automatically request more history starting from the oldest message so the full conversation loads.
+    if (m_conversationMessages.size() < 30 && !m_conversationMessages.isEmpty()) {
+      const qint64 oldestId = m_conversationMessages.first().toMap().value("messageId").toLongLong();
+      if (oldestId > 0) {
+        m_worker.loadConversation(chatId, oldestId, 50);
+      }
+    }
+  });
+  connect(&m_worker, &TelegramWorker::messageReceived, this, [this](qint64 chatId, const QVariantMap &message) {
+    if (chatId != m_activeChatId) return;
+    const qint64 msgId = message.value("messageId").toLongLong();
+    bool exists = false;
+    for (const auto &m : m_conversationMessages) {
+      if (m.toMap().value("messageId").toLongLong() == msgId) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      m_conversationMessages.append(message);
+      emit conversationMessagesChanged();
+    }
+  });
+  connect(&m_worker, &TelegramWorker::messageSendSucceeded, this, [this](qint64 chatId, qint64 oldId, const QVariantMap &message) {
+    if (chatId != m_activeChatId) return;
+    bool found = false;
+    for (int i = 0; i < m_conversationMessages.size(); ++i) {
+      if (m_conversationMessages[i].toMap().value("messageId").toLongLong() == oldId) {
+        m_conversationMessages[i] = message;
+        found = true;
+        break;
+      }
+    }
+    if (!found) m_conversationMessages.append(message);
+    emit conversationMessagesChanged();
+  });
+  connect(&m_worker, &TelegramWorker::chatReadOutboxUpdated, this, [this](qint64 chatId, qint64 lastReadId) {
+    if (chatId != m_activeChatId) return;
+    bool changed = false;
+    for (QVariant &value : m_conversationMessages) {
+      QVariantMap message = value.toMap();
+      if (message.value("outgoing").toBool() && message.value("messageId").toLongLong() <= lastReadId && message.value("status").toString() != QStringLiteral("✓✓")) {
+        message["status"] = QStringLiteral("✓✓");
+        value = message;
+        changed = true;
+      }
+    }
+    if (changed) emit conversationMessagesChanged();
+  });
+  connect(&m_worker, &TelegramWorker::chatTyping, this, [this](qint64 chatId, bool active) { if (chatId != m_activeChatId || m_typing == active) return; m_typing = active; emit typingChanged(); });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
             if (m_qrCodeLink != link) {
@@ -107,5 +182,12 @@ void TelegramClient::requestQrLogin() { m_worker.submitQrLogin(); }
 void TelegramClient::resendAuthenticationCode() { m_worker.resendAuthenticationCode(); }
 void TelegramClient::selectPhoneLogin() { m_worker.selectPhoneLogin(); }
 void TelegramClient::selectQrLogin() { m_worker.selectQrLogin(); }
-void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_activeChatId = chatId; m_conversationMessages.clear(); emit conversationMessagesChanged(); m_worker.loadConversation(chatId, fromMessageId); }
+void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_activeChatId = chatId; m_typing = false; emit typingChanged(); m_conversationMessages.clear(); emit conversationMessagesChanged(); m_worker.loadConversation(chatId, fromMessageId); }
+void TelegramClient::sendMessage(qint64 chatId, const QString &text) {
+  if (chatId != 0 && !text.trimmed().isEmpty()) m_worker.sendMessage(chatId, text.trimmed());
+}
+void TelegramClient::viewMessage(qint64 chatId, qint64 messageId) {
+  if (chatId != 0 && messageId != 0) m_worker.viewMessage(chatId, messageId);
+}
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
+bool TelegramClient::typing() const { return m_typing; }

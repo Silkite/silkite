@@ -6,6 +6,11 @@ import QtQuick.Window
 ApplicationWindow {
   id: window
 
+  FontLoader {
+    id: fredokaFont
+    source: "qrc:/qt/qml/Silkite/assets/fonts/Fredoka-Variable.ttf"
+  }
+
   visible: true
 
   width: 1200
@@ -15,6 +20,7 @@ ApplicationWindow {
   minimumHeight: 600
 
   title: appController.appName
+  font.family: fredokaFont.name
 
   color: Theme.windowBackground
 
@@ -605,6 +611,7 @@ ApplicationWindow {
       avatarPath: window.selectedChat.avatarPath || ""
       lastMessage: window.selectedChat.lastMessage || ""
       messages: telegramClient.conversationMessages
+      typing: telegramClient.typing
       appVersion: appController.appVersion
 
       onStartMessaging: {
@@ -615,6 +622,12 @@ ApplicationWindow {
         window.chatListAutoExpanded = false
         window.selectedChatId = firstChat.chatId
         telegramClient.loadConversation(firstChat.chatId)
+      }
+
+      onSendMessageRequested: function(text) {
+        if (window.selectedChatId) {
+          telegramClient.sendMessage(window.selectedChatId, text)
+        }
       }
       }
     }

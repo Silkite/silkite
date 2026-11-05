@@ -42,6 +42,22 @@ QString preview(const td::td_api::message *message) {
   return QStringLiteral("Attachment");
 }
 
+QString replyPreview(const td::td_api::message *message) {
+  if (!message || !message->reply_to_) return {};
+  if (message->reply_to_->get_id() == td::td_api::messageReplyToMessage::ID) {
+    auto *reply = static_cast<const td::td_api::messageReplyToMessage *>(message->reply_to_.get());
+    if (reply->quote_ && reply->quote_->text_ && !reply->quote_->text_->text_.empty()) {
+      return QString::fromStdString(reply->quote_->text_->text_);
+    }
+    if (reply->content_) {
+      if (reply->content_->get_id() == td::td_api::messageText::ID)
+        return QString::fromStdString(static_cast<const td::td_api::messageText *>(reply->content_.get())->text_->text_);
+      return QStringLiteral("Attachment");
+    }
+  }
+  return {};
+}
+
 QVariantMap toChatMap(const td::td_api::chat *chat) {
   if (!chat) return {};
   const QString name = QString::fromStdString(chat->title_);
@@ -78,9 +94,17 @@ void TelegramWorker::submitPhoneNumber(const QString &phoneNumber) { enqueue({Co
 void TelegramWorker::submitCode(const QString &code) { enqueue({CommandType::Code, code}); }
 void TelegramWorker::submitQrLogin() { enqueue({CommandType::QrLogin, {}}); }
 void TelegramWorker::resendAuthenticationCode() { enqueue({CommandType::ResendCode, {}}); }
-void TelegramWorker::selectPhoneLogin() { enqueue({CommandType::SelectPhone, {}}); }
-void TelegramWorker::selectQrLogin() { enqueue({CommandType::SelectQr, {}}); }
-void TelegramWorker::loadConversation(qint64 chatId, qint64 fromMessageId, int limit) { enqueue({CommandType::History, QString::number(chatId) + ":" + QString::number(fromMessageId) + ":" + QString::number(limit)}); }
+void TelegramWorker::selectPhoneLogin() { enqueue({CommandType::SelectPhone, {}, 0, 0}); }
+void TelegramWorker::selectQrLogin() { enqueue({CommandType::SelectQr, {}, 0, 0}); }
+void TelegramWorker::loadConversation(qint64 chatId, qint64 fromMessageId, int limit) {
+  enqueue({CommandType::History, QString::number(fromMessageId) + ":" + QString::number(limit), chatId, 0});
+}
+void TelegramWorker::sendMessage(qint64 chatId, const QString &text) {
+  enqueue({CommandType::SendMessage, text, chatId, 0});
+}
+void TelegramWorker::viewMessage(qint64 chatId, qint64 messageId) {
+  enqueue({CommandType::ViewMessage, {}, chatId, messageId});
+}
 
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
@@ -99,8 +123,10 @@ void TelegramWorker::run() {
   bool phoneParametersSent = false;
   bool qrReady = false;
   bool phoneReady = false;
+  qint64 currentOpenedChatId = 0;
   QHash<int, qint64> avatarFileChats;
   QHash<qint64, qint64> lastReadOutbox;
+  QHash<td::ClientManager::RequestId, qint64> historyRequests;
   bool qrPending = true;
   QString phonePending;
   QString phoneState;
@@ -133,7 +159,44 @@ void TelegramWorker::run() {
         if (command.type == CommandType::SelectQr) activeClientId = qrClientId;
         if (command.type == CommandType::History) {
           const auto p = command.value.split(':');
-          if (p.size() == 3) send(activeClientId, td::td_api::make_object<td::td_api::getChatHistory>(p[0].toLongLong(), p[1].toLongLong(), 0, p[2].toInt(), false));
+          const qint64 chatId = command.chatId;
+          const qint64 fromMessageId = p.size() > 0 ? p[0].toLongLong() : 0;
+          const int limit = p.size() > 1 ? p[1].toInt() : 50;
+
+          if (currentOpenedChatId != 0 && currentOpenedChatId != chatId) {
+            send(activeClientId, td::td_api::make_object<td::td_api::closeChat>(currentOpenedChatId));
+            currentOpenedChatId = 0;
+          }
+          if (chatId != 0 && currentOpenedChatId != chatId) {
+            send(activeClientId, td::td_api::make_object<td::td_api::openChat>(chatId));
+            currentOpenedChatId = chatId;
+          }
+
+          const auto reqId = nextRequestId;
+          historyRequests.insert(reqId, chatId);
+          send(activeClientId, td::td_api::make_object<td::td_api::getChatHistory>(chatId, fromMessageId, 0, limit, false));
+        }
+        if (command.type == CommandType::SendMessage) {
+          auto textObj = td::td_api::make_object<td::td_api::formattedText>();
+          textObj->text_ = command.value.toStdString();
+          auto contentObj = td::td_api::make_object<td::td_api::inputMessageText>(std::move(textObj), nullptr, true);
+          send(activeClientId, td::td_api::make_object<td::td_api::sendMessage>(
+              command.chatId,
+              nullptr,
+              nullptr,
+              nullptr,
+              nullptr,
+              std::move(contentObj)
+          ));
+        }
+        if (command.type == CommandType::ViewMessage) {
+          std::vector<td::td_api::int53> ids{command.messageId};
+          send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(
+              command.chatId,
+              std::move(ids),
+              td::td_api::make_object<td::td_api::messageSourceChatHistory>(),
+              true
+          ));
         }
         if (command.type == CommandType::QrLogin) {
           activeClientId = qrClientId;
@@ -249,18 +312,69 @@ void TelegramWorker::run() {
       continue;
     }
 
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewChat::ID) { auto *chat = static_cast<td::td_api::updateNewChat *>(response.object.get())->chat_.get(); if (chat && chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewChat::ID) { auto *chat = static_cast<td::td_api::updateNewChat *>(response.object.get())->chat_.get(); if (chat) { lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); } continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatTitle::ID) { auto *u = static_cast<td::td_api::updateChatTitle *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"name", QString::fromStdString(u->title_)}}); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPhoto::ID) { auto *u = static_cast<td::td_api::updateChatPhoto *>(response.object.get()); if (u->photo_ && u->photo_->small_) { const int fileId = u->photo_->small_->id_; avatarFileChats.insert(fileId, u->chat_id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateUnreadMessageCount::ID) { auto *u = static_cast<td::td_api::updateUnreadMessageCount *>(response.object.get()); Q_UNUSED(u); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatLastMessage::ID) { auto *u = static_cast<td::td_api::updateChatLastMessage *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"lastMessage", preview(u->last_message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->last_message_->date_).toLocalTime().toString("HH:mm")}, {"order", mainChatOrder(u->positions_)}}); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatLastMessage::ID) { auto *u = static_cast<td::td_api::updateChatLastMessage *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"lastMessage", preview(u->last_message_.get())}, {"time", u->last_message_ ? QDateTime::fromSecsSinceEpoch(u->last_message_->date_).toLocalTime().toString("HH:mm") : QString()}, {"order", mainChatOrder(u->positions_)}}); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatDraftMessage::ID) { auto *u = static_cast<td::td_api::updateChatDraftMessage *>(response.object.get()); const qint64 order = mainChatOrder(u->positions_); if (order > 0) emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"order", order}}); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPosition::ID) { auto *u = static_cast<td::td_api::updateChatPosition *>(response.object.get()); if (u->position_ && u->position_->list_ && u->position_->list_->get_id() == td::td_api::chatListMain::ID) emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"order", qint64(u->position_->order_)}}); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadInbox::ID) { auto *u = static_cast<td::td_api::updateChatReadInbox *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"unreadCount", u->unread_count_}}); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadOutbox::ID) { auto *u = static_cast<td::td_api::updateChatReadOutbox *>(response.object.get()); lastReadOutbox.insert(u->chat_id_, u->last_read_outbox_message_id_); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewMessage::ID) { auto *u = static_cast<td::td_api::updateNewMessage *>(response.object.get()); if (u->message_) { const auto chatId = qint64(u->message_->chat_id_); emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}}); emit messageReceived(chatId, {{"messageId", qint64(u->message_->id_)}, {"text", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"outgoing", u->message_->is_outgoing_}, {"status", u->message_->is_outgoing_ ? QStringLiteral("✓") : QString()}}); } continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadOutbox::ID) { auto *u = static_cast<td::td_api::updateChatReadOutbox *>(response.object.get()); lastReadOutbox.insert(u->chat_id_, u->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(u->chat_id_), qint64(u->last_read_outbox_message_id_)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatAction::ID) { auto *u = static_cast<td::td_api::updateChatAction *>(response.object.get()); emit chatTyping(qint64(u->chat_id_), u->action_ && u->action_->get_id() == td::td_api::chatActionTyping::ID); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewMessage::ID) {
+      auto *u = static_cast<td::td_api::updateNewMessage *>(response.object.get());
+      if (u->message_) {
+        const auto chatId = qint64(u->message_->chat_id_);
+        const bool read = lastReadOutbox.value(chatId, 0) >= qint64(u->message_->id_);
+        emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}});
+        emit messageReceived(chatId, {{"messageId", qint64(u->message_->id_)}, {"text", preview(u->message_.get())}, {"replyText", replyPreview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"outgoing", u->message_->is_outgoing_}, {"status", u->message_->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString()}});
+        if (!u->message_->is_outgoing_ && currentOpenedChatId == chatId) {
+          std::vector<td::td_api::int53> ids{u->message_->id_};
+          send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(chatId, std::move(ids), td::td_api::make_object<td::td_api::messageSourceChatHistory>(), true));
+        }
+      }
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateMessageSendSucceeded::ID) {
+      auto *u = static_cast<td::td_api::updateMessageSendSucceeded *>(response.object.get());
+      if (u->message_) {
+        const auto chatId = qint64(u->message_->chat_id_);
+        const bool read = lastReadOutbox.value(chatId, 0) >= qint64(u->message_->id_);
+        emit messageSendSucceeded(chatId, qint64(u->old_message_id_), {{"messageId", qint64(u->message_->id_)}, {"text", preview(u->message_.get())}, {"replyText", replyPreview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"outgoing", u->message_->is_outgoing_}, {"status", read ? QStringLiteral("✓✓") : QStringLiteral("✓")}});
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) { auto *r = static_cast<td::td_api::chats *>(response.object.get()); for (const auto id : r->chat_ids_) send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id)); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_)); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateFile::ID) { auto *u = static_cast<td::td_api::updateFile *>(response.object.get()); if (u->file_ && u->file_->local_ && u->file_->local_->is_downloading_completed_ && avatarFileChats.contains(u->file_->id_)) emit chatUpdated({{"chatId", avatarFileChats.value(u->file_->id_)}, {"avatarPath", QString::fromStdString(u->file_->local_->path_)}}); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::messages::ID) { auto *r = static_cast<td::td_api::messages *>(response.object.get()); QVariantList list; qint64 chatId = 0; std::vector<td::td_api::int53> ids; for (const auto &m : r->messages_) { chatId = m->chat_id_; ids.push_back(m->id_); list.append(QVariantMap{{"messageId", qint64(m->id_)}, {"text", preview(m.get())}, {"time", QDateTime::fromSecsSinceEpoch(m->date_).toLocalTime().toString("HH:mm")}, {"outgoing", m->is_outgoing_}, {"status", m->is_outgoing_ ? QStringLiteral("✓") : QString()}}); } if (chatId && !ids.empty()) send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(chatId, std::move(ids), td::td_api::make_object<td::td_api::messageSourceChatHistory>(), true)); emit messagesLoaded(chatId, list, r->messages_.size() >= 50); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::messages::ID) {
+      auto *r = static_cast<td::td_api::messages *>(response.object.get());
+      QVariantList list;
+      qint64 chatId = historyRequests.take(response.request_id);
+      std::vector<td::td_api::int53> ids;
+      for (auto it = r->messages_.rbegin(); it != r->messages_.rend(); ++it) {
+        const auto &m = *it;
+        if (!m) continue;
+        if (!chatId) chatId = m->chat_id_;
+        ids.push_back(m->id_);
+        const bool read = lastReadOutbox.value(chatId, 0) >= qint64(m->id_);
+        list.append(QVariantMap{
+          {"messageId", qint64(m->id_)},
+          {"text", preview(m.get())},
+          {"replyText", replyPreview(m.get())},
+          {"time", QDateTime::fromSecsSinceEpoch(m->date_).toLocalTime().toString("HH:mm")},
+          {"outgoing", m->is_outgoing_},
+          {"status", m->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString()}
+        });
+      }
+      if (chatId && !ids.empty()) {
+        send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(
+            chatId, std::move(ids), td::td_api::make_object<td::td_api::messageSourceChatHistory>(), true));
+      }
+      emit messagesLoaded(chatId, list, r->messages_.size() >= 50);
+      continue;
+    }
 
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::error::ID) {
       auto *error = static_cast<td::td_api::error *>(response.object.get());

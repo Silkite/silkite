@@ -64,6 +64,8 @@ qt_add_qml_module(silkite
     assets/icons/more.svg
     assets/icons/panel-left.svg
     assets/icons/send.svg
+    assets/fonts/Fredoka-Variable.ttf
+    assets/fonts/Fredoka-OFL.txt
 )
 
 target_include_directories(silkite
