@@ -1,7 +1,9 @@
 #include "telegram_worker.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QMutexLocker>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QDateTime>
@@ -37,8 +39,32 @@ QString stateName(const td::td_api::AuthorizationState &state) {
 
 QString preview(const td::td_api::message *message) {
   if (!message || !message->content_) return {};
-  if (message->content_->get_id() == td::td_api::messageText::ID)
+  const auto contentId = message->content_->get_id();
+  if (contentId == td::td_api::messageText::ID)
     return QString::fromStdString(static_cast<const td::td_api::messageText *>(message->content_.get())->text_->text_);
+  if (contentId == td::td_api::messagePhoto::ID) {
+    auto *p = static_cast<const td::td_api::messagePhoto *>(message->content_.get());
+    if (p->caption_ && !p->caption_->text_.empty())
+      return QString::fromStdString(p->caption_->text_);
+    return QStringLiteral("Photo");
+  }
+  if (contentId == td::td_api::messageDocument::ID) {
+    auto *d = static_cast<const td::td_api::messageDocument *>(message->content_.get());
+    if (d->caption_ && !d->caption_->text_.empty())
+      return QString::fromStdString(d->caption_->text_);
+    if (d->document_ && !d->document_->file_name_.empty())
+      return QString::fromStdString(d->document_->file_name_);
+    return QStringLiteral("Document");
+  }
+  if (contentId == td::td_api::messageVideo::ID) {
+    auto *v = static_cast<const td::td_api::messageVideo *>(message->content_.get());
+    if (v->caption_ && !v->caption_->text_.empty())
+      return QString::fromStdString(v->caption_->text_);
+    return QStringLiteral("Video");
+  }
+  if (contentId == td::td_api::messageAnimation::ID) return QStringLiteral("GIF");
+  if (contentId == td::td_api::messageAudio::ID) return QStringLiteral("Audio");
+  if (contentId == td::td_api::messageVoiceNote::ID) return QStringLiteral("Voice Message");
   return QStringLiteral("Attachment");
 }
 
@@ -50,12 +76,183 @@ QString replyPreview(const td::td_api::message *message) {
       return QString::fromStdString(reply->quote_->text_->text_);
     }
     if (reply->content_) {
-      if (reply->content_->get_id() == td::td_api::messageText::ID)
+      const auto cid = reply->content_->get_id();
+      if (cid == td::td_api::messageText::ID)
         return QString::fromStdString(static_cast<const td::td_api::messageText *>(reply->content_.get())->text_->text_);
+      if (cid == td::td_api::messagePhoto::ID) return QStringLiteral("Photo");
+      if (cid == td::td_api::messageDocument::ID) return QStringLiteral("Document");
+      if (cid == td::td_api::messageVideo::ID) return QStringLiteral("Video");
+      if (cid == td::td_api::messageAnimation::ID) return QStringLiteral("GIF");
+      if (cid == td::td_api::messageAudio::ID) return QStringLiteral("Audio");
+      if (cid == td::td_api::messageVoiceNote::ID) return QStringLiteral("Voice Message");
       return QStringLiteral("Attachment");
     }
   }
   return {};
+}
+
+QString ensureGifConverted(const QString &sourcePath) {
+  if (sourcePath.isEmpty()) return sourcePath;
+  const QFileInfo fi(sourcePath);
+  const QString ext = fi.suffix().toLower();
+  if (ext == "gif") return sourcePath;
+  if (ext != "mp4" && ext != "webm" && ext != "mov") return sourcePath;
+
+  const QString gifDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/animations";
+  QDir().mkpath(gifDir);
+  const QString targetPath = gifDir + "/" + fi.completeBaseName() + ".gif";
+  if (QFileInfo::exists(targetPath)) return targetPath;
+
+  QProcess process;
+  process.start("ffmpeg", QStringList() << "-y" << "-i" << sourcePath
+                                        << "-vf" << "fps=18,scale='min(360,iw)':-1:flags=lanczos"
+                                        << targetPath);
+  if (process.waitForFinished(8000) && process.exitCode() == 0 && QFileInfo::exists(targetPath)) {
+    return targetPath;
+  }
+  return sourcePath;
+}
+
+QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownload) {
+  fileIdToDownload = 0;
+  if (!message) return {};
+
+  QVariantMap map;
+  map["messageId"] = qint64(message->id_);
+  map["chatId"] = qint64(message->chat_id_);
+  map["time"] = QDateTime::fromSecsSinceEpoch(message->date_).toLocalTime().toString("HH:mm");
+  map["outgoing"] = message->is_outgoing_;
+  map["replyText"] = replyPreview(message);
+  map["mediaType"] = QStringLiteral("none");
+  map["filePath"] = QString();
+  map["fileName"] = QString();
+  map["fileSize"] = 0;
+  map["mediaWidth"] = 0;
+  map["mediaHeight"] = 0;
+  map["duration"] = 0;
+  map["caption"] = QString();
+  map["isDownloading"] = false;
+  map["text"] = preview(message);
+
+  if (!message->content_) return map;
+  const auto contentId = message->content_->get_id();
+
+  if (contentId == td::td_api::messageText::ID) {
+    auto *t = static_cast<const td::td_api::messageText *>(message->content_.get());
+    map["text"] = QString::fromStdString(t->text_->text_);
+  } else if (contentId == td::td_api::messagePhoto::ID) {
+    auto *p = static_cast<const td::td_api::messagePhoto *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("photo");
+    if (p->caption_) map["caption"] = QString::fromStdString(p->caption_->text_);
+    if (p->photo_ && !p->photo_->sizes_.empty()) {
+      const auto &size = p->photo_->sizes_.back();
+      if (size) {
+        map["mediaWidth"] = size->width_;
+        map["mediaHeight"] = size->height_;
+        if (size->photo_) {
+          const int fid = size->photo_->id_;
+          map["fileId"] = fid;
+          map["fileSize"] = qint64(size->photo_->size_);
+          const QString localPath = size->photo_->local_ ? QString::fromStdString(size->photo_->local_->path_) : QString();
+          if (!localPath.isEmpty() && (size->photo_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+            map["filePath"] = localPath;
+          } else {
+            fileIdToDownload = fid;
+            map["isDownloading"] = true;
+          }
+        }
+      }
+    }
+  } else if (contentId == td::td_api::messageDocument::ID) {
+    auto *d = static_cast<const td::td_api::messageDocument *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("document");
+    if (d->caption_) map["caption"] = QString::fromStdString(d->caption_->text_);
+    if (d->document_) {
+      map["fileName"] = QString::fromStdString(d->document_->file_name_);
+      if (d->document_->thumbnail_) {
+        map["mediaWidth"] = d->document_->thumbnail_->width_;
+        map["mediaHeight"] = d->document_->thumbnail_->height_;
+      }
+      if (d->document_->document_) {
+        const int fid = d->document_->document_->id_;
+        map["fileId"] = fid;
+        map["fileSize"] = qint64(d->document_->document_->size_);
+        const QString localPath = d->document_->document_->local_ ? QString::fromStdString(d->document_->document_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (d->document_->document_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = localPath;
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
+  } else if (contentId == td::td_api::messageVideo::ID) {
+    auto *v = static_cast<const td::td_api::messageVideo *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("video");
+    if (v->caption_) map["caption"] = QString::fromStdString(v->caption_->text_);
+    if (v->video_) {
+      map["fileName"] = QString::fromStdString(v->video_->file_name_);
+      map["mediaWidth"] = v->video_->width_;
+      map["mediaHeight"] = v->video_->height_;
+      map["duration"] = v->video_->duration_;
+      if (v->video_->video_) {
+        const int fid = v->video_->video_->id_;
+        map["fileId"] = fid;
+        map["fileSize"] = qint64(v->video_->video_->size_);
+        const QString localPath = v->video_->video_->local_ ? QString::fromStdString(v->video_->video_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (v->video_->video_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = localPath;
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
+  } else if (contentId == td::td_api::messageAnimation::ID) {
+    auto *a = static_cast<const td::td_api::messageAnimation *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("animation");
+    if (a->caption_) map["caption"] = QString::fromStdString(a->caption_->text_);
+    if (a->animation_) {
+      map["fileName"] = QString::fromStdString(a->animation_->file_name_);
+      map["mediaWidth"] = a->animation_->width_;
+      map["mediaHeight"] = a->animation_->height_;
+      map["duration"] = a->animation_->duration_;
+      if (a->animation_->animation_) {
+        const int fid = a->animation_->animation_->id_;
+        map["fileId"] = fid;
+        map["fileSize"] = qint64(a->animation_->animation_->size_);
+        const QString localPath = a->animation_->animation_->local_ ? QString::fromStdString(a->animation_->animation_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (a->animation_->animation_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = ensureGifConverted(localPath);
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
+  } else if (contentId == td::td_api::messageAudio::ID) {
+    auto *au = static_cast<const td::td_api::messageAudio *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("audio");
+    if (au->caption_) map["caption"] = QString::fromStdString(au->caption_->text_);
+    if (au->audio_) {
+      map["fileName"] = QString::fromStdString(au->audio_->file_name_);
+      map["duration"] = au->audio_->duration_;
+      if (au->audio_->audio_) {
+        const int fid = au->audio_->audio_->id_;
+        map["fileId"] = fid;
+        map["fileSize"] = qint64(au->audio_->audio_->size_);
+        const QString localPath = au->audio_->audio_->local_ ? QString::fromStdString(au->audio_->audio_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (au->audio_->audio_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = localPath;
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
+  }
+
+  return map;
 }
 
 QVariantMap toChatMap(const td::td_api::chat *chat) {
@@ -100,10 +297,13 @@ void TelegramWorker::loadConversation(qint64 chatId, qint64 fromMessageId, int l
   enqueue({CommandType::History, QString::number(fromMessageId) + ":" + QString::number(limit), chatId, 0});
 }
 void TelegramWorker::sendMessage(qint64 chatId, const QString &text) {
-  enqueue({CommandType::SendMessage, text, chatId, 0});
+  enqueue({CommandType::SendMessage, text, chatId, 0, {}});
+}
+void TelegramWorker::sendMedia(qint64 chatId, const QString &filePath, const QString &caption) {
+  enqueue({CommandType::SendMedia, filePath, chatId, 0, caption});
 }
 void TelegramWorker::viewMessage(qint64 chatId, qint64 messageId) {
-  enqueue({CommandType::ViewMessage, {}, chatId, messageId});
+  enqueue({CommandType::ViewMessage, {}, chatId, messageId, {}});
 }
 
 void TelegramWorker::enqueue(Command command) {
@@ -125,6 +325,7 @@ void TelegramWorker::run() {
   bool phoneReady = false;
   qint64 currentOpenedChatId = 0;
   QHash<int, qint64> avatarFileChats;
+  QMultiHash<int, QPair<qint64, qint64>> messageFiles; // fileId -> (chatId, messageId)
   QHash<qint64, qint64> lastReadOutbox;
   QHash<td::ClientManager::RequestId, qint64> historyRequests;
   bool qrPending = true;
@@ -180,6 +381,53 @@ void TelegramWorker::run() {
           auto textObj = td::td_api::make_object<td::td_api::formattedText>();
           textObj->text_ = command.value.toStdString();
           auto contentObj = td::td_api::make_object<td::td_api::inputMessageText>(std::move(textObj), nullptr, true);
+          send(activeClientId, td::td_api::make_object<td::td_api::sendMessage>(
+              command.chatId,
+              nullptr,
+              nullptr,
+              nullptr,
+              nullptr,
+              std::move(contentObj)
+          ));
+        }
+        if (command.type == CommandType::SendMedia) {
+          const QString path = command.value;
+          const QString caption = command.extra;
+          const QString ext = QFileInfo(path).suffix().toLower();
+          auto captionObj = td::td_api::make_object<td::td_api::formattedText>();
+          captionObj->text_ = caption.toStdString();
+
+          const bool isImage = (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "bmp" || ext == "gif");
+          td::td_api::object_ptr<td::td_api::InputMessageContent> contentObj;
+
+          if (isImage) {
+            auto inputPhotoObj = td::td_api::make_object<td::td_api::inputPhoto>(
+                td::td_api::make_object<td::td_api::inputFileLocal>(path.toStdString()),
+                nullptr,
+                nullptr,
+                std::vector<td::td_api::int32>{},
+                0,
+                0
+            );
+            contentObj = td::td_api::make_object<td::td_api::inputMessagePhoto>(
+                std::move(inputPhotoObj),
+                std::move(captionObj),
+                false,
+                nullptr,
+                false
+            );
+          } else {
+            auto inputDocObj = td::td_api::make_object<td::td_api::inputDocument>(
+                td::td_api::make_object<td::td_api::inputFileLocal>(path.toStdString()),
+                nullptr,
+                false
+            );
+            contentObj = td::td_api::make_object<td::td_api::inputMessageDocument>(
+                std::move(inputDocObj),
+                std::move(captionObj)
+            );
+          }
+
           send(activeClientId, td::td_api::make_object<td::td_api::sendMessage>(
               command.chatId,
               nullptr,
@@ -328,7 +576,17 @@ void TelegramWorker::run() {
         const auto chatId = qint64(u->message_->chat_id_);
         const bool read = lastReadOutbox.value(chatId, 0) >= qint64(u->message_->id_);
         emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}});
-        emit messageReceived(chatId, {{"messageId", qint64(u->message_->id_)}, {"text", preview(u->message_.get())}, {"replyText", replyPreview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"outgoing", u->message_->is_outgoing_}, {"status", u->message_->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString()}});
+
+        int fileIdToDownload = 0;
+        QVariantMap msgMap = parseMessage(u->message_.get(), fileIdToDownload);
+        msgMap["status"] = u->message_->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+
+        if (fileIdToDownload != 0) {
+          messageFiles.insert(fileIdToDownload, qMakePair(chatId, qint64(u->message_->id_)));
+          send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileIdToDownload, 32, 0, 0, false));
+        }
+
+        emit messageReceived(chatId, msgMap);
         if (!u->message_->is_outgoing_ && currentOpenedChatId == chatId) {
           std::vector<td::td_api::int53> ids{u->message_->id_};
           send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(chatId, std::move(ids), td::td_api::make_object<td::td_api::messageSourceChatHistory>(), true));
@@ -341,13 +599,44 @@ void TelegramWorker::run() {
       if (u->message_) {
         const auto chatId = qint64(u->message_->chat_id_);
         const bool read = lastReadOutbox.value(chatId, 0) >= qint64(u->message_->id_);
-        emit messageSendSucceeded(chatId, qint64(u->old_message_id_), {{"messageId", qint64(u->message_->id_)}, {"text", preview(u->message_.get())}, {"replyText", replyPreview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"outgoing", u->message_->is_outgoing_}, {"status", read ? QStringLiteral("✓✓") : QStringLiteral("✓")}});
+
+        int fileIdToDownload = 0;
+        QVariantMap msgMap = parseMessage(u->message_.get(), fileIdToDownload);
+        msgMap["status"] = read ? QStringLiteral("✓✓") : QStringLiteral("✓");
+
+        if (fileIdToDownload != 0) {
+          messageFiles.insert(fileIdToDownload, qMakePair(chatId, qint64(u->message_->id_)));
+          send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileIdToDownload, 32, 0, 0, false));
+        }
+
+        emit messageSendSucceeded(chatId, qint64(u->old_message_id_), msgMap);
       }
       continue;
     }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) { auto *r = static_cast<td::td_api::chats *>(response.object.get()); for (const auto id : r->chat_ids_) send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id)); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_)); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateFile::ID) { auto *u = static_cast<td::td_api::updateFile *>(response.object.get()); if (u->file_ && u->file_->local_ && u->file_->local_->is_downloading_completed_ && avatarFileChats.contains(u->file_->id_)) emit chatUpdated({{"chatId", avatarFileChats.value(u->file_->id_)}, {"avatarPath", QString::fromStdString(u->file_->local_->path_)}}); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateFile::ID) {
+      auto *u = static_cast<td::td_api::updateFile *>(response.object.get());
+      if (u->file_ && u->file_->local_ && u->file_->local_->is_downloading_completed_) {
+        const int fid = u->file_->id_;
+        const QString localPath = QString::fromStdString(u->file_->local_->path_);
+        if (avatarFileChats.contains(fid)) {
+          emit chatUpdated({{"chatId", avatarFileChats.value(fid)}, {"avatarPath", localPath}});
+        }
+        if (messageFiles.contains(fid)) {
+          const auto pairs = messageFiles.values(fid);
+          messageFiles.remove(fid);
+          QString outPath = localPath;
+          if (localPath.endsWith(".mp4", Qt::CaseInsensitive) || localPath.endsWith(".mov", Qt::CaseInsensitive) || localPath.endsWith(".webm", Qt::CaseInsensitive)) {
+            outPath = ensureGifConverted(localPath);
+          }
+          for (const auto &pair : pairs) {
+            emit messageFileUpdated(pair.first, pair.second, outPath);
+          }
+        }
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::messages::ID) {
       auto *r = static_cast<td::td_api::messages *>(response.object.get());
       QVariantList list;
@@ -359,14 +648,17 @@ void TelegramWorker::run() {
         if (!chatId) chatId = m->chat_id_;
         ids.push_back(m->id_);
         const bool read = lastReadOutbox.value(chatId, 0) >= qint64(m->id_);
-        list.append(QVariantMap{
-          {"messageId", qint64(m->id_)},
-          {"text", preview(m.get())},
-          {"replyText", replyPreview(m.get())},
-          {"time", QDateTime::fromSecsSinceEpoch(m->date_).toLocalTime().toString("HH:mm")},
-          {"outgoing", m->is_outgoing_},
-          {"status", m->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString()}
-        });
+
+        int fileIdToDownload = 0;
+        QVariantMap msgMap = parseMessage(m.get(), fileIdToDownload);
+        msgMap["status"] = m->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+
+        if (fileIdToDownload != 0) {
+          messageFiles.insert(fileIdToDownload, qMakePair(chatId, qint64(m->id_)));
+          send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileIdToDownload, 32, 0, 0, false));
+        }
+
+        list.append(msgMap);
       }
       if (chatId && !ids.empty()) {
         send(activeClientId, td::td_api::make_object<td::td_api::viewMessages>(

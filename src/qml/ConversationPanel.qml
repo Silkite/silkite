@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
 
 Rectangle {
@@ -30,6 +31,7 @@ Rectangle {
 
   signal startMessaging()
   signal sendMessageRequested(string text)
+  signal sendMediaRequested(string filePath, string caption)
 
   color: Theme.windowBackground
 
@@ -65,9 +67,9 @@ Rectangle {
     Rectangle {
       anchors.fill: parent
       z: -1
-      color: Qt.rgba(0.10, 0.12, 0.15, 0.86)
-      border.color: Qt.rgba(1, 1, 1, 0.14)
-      border.width: 1
+      color: "transparent"
+      border.color: "transparent"
+      border.width: 0
     }
 
       RowLayout {
@@ -219,6 +221,38 @@ Rectangle {
 
           readonly property bool isOutgoing: Boolean(modelData.outgoing)
           readonly property bool hasReply: modelData.replyText !== undefined && modelData.replyText !== ""
+          readonly property bool hasMedia: modelData.mediaType !== undefined && modelData.mediaType !== "none" && modelData.mediaType !== ""
+          readonly property bool isVisualMedia: modelData.mediaType === "photo" || modelData.mediaType === "video" || modelData.mediaType === "animation"
+          readonly property bool isPhoto: modelData.mediaType === "photo"
+          readonly property bool isVideo: modelData.mediaType === "video"
+          readonly property bool isAnimation: modelData.mediaType === "animation"
+          readonly property bool isDoc: modelData.mediaType === "document" || modelData.mediaType === "audio"
+          readonly property bool hasCaption: Boolean(modelData.caption && modelData.caption.trim().length > 0)
+          readonly property bool isBorderlessMedia: isVisualMedia && !hasCaption && !hasReply
+
+          // Target dimensions for photos and videos based on aspect ratio
+          readonly property real targetMediaWidth: {
+            if (!isVisualMedia) return 0
+            var maxW = Math.min(360, parent.width * 0.68)
+            var minW = 200
+            if (modelData.mediaWidth > 0 && modelData.mediaHeight > 0) {
+              var ratio = modelData.mediaWidth / modelData.mediaHeight
+              var computedW = 260 * ratio
+              return Math.max(minW, Math.min(maxW, computedW))
+            }
+            return 280
+          }
+
+          readonly property real targetMediaHeight: {
+            if (!isVisualMedia) return 0
+            var maxH = 340
+            var minH = 160
+            if (modelData.mediaWidth > 0 && modelData.mediaHeight > 0) {
+              var ratio = modelData.mediaWidth / modelData.mediaHeight
+              return Math.max(minH, Math.min(maxH, targetMediaWidth / ratio))
+            }
+            return 210
+          }
 
           TextMetrics {
             id: bubbleMetrics
@@ -242,12 +276,12 @@ Rectangle {
           readonly property real maxBubbleWidth: Math.min(460, parent.width * 0.68)
 
           // Minimum pill width: replies require at least 210px to ensure preview text isn't cramped/truncated
-          readonly property real minBubbleWidth: hasReply ? 210 : (msgDelegate.isOutgoing ? 175 : 160)
+          readonly property real minBubbleWidth: isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 210 : (msgDelegate.isOutgoing ? 175 : 160)))
 
           // Natural inline content width calculation
           readonly property real inlineNeededWidth: bubbleMetrics.width + metaMetrics.width + 42
           readonly property real replyNeededWidth: hasReply ? (replyMetrics.width + 44) : 0
-          readonly property bool fitsSingleLine: !hasReply && (inlineNeededWidth <= maxBubbleWidth)
+          readonly property bool fitsSingleLine: !hasMedia && !hasReply && (inlineNeededWidth <= maxBubbleWidth)
 
           Rectangle {
             id: bubble
@@ -257,31 +291,37 @@ Rectangle {
             anchors.rightMargin: msgDelegate.isOutgoing ? 18 : 0
             anchors.leftMargin: msgDelegate.isOutgoing ? 0 : 18
 
-            // Width: Guaranteed minimum width so reply preview & text have sufficient room
-            width: fitsSingleLine
-              ? Math.max(minBubbleWidth, inlineNeededWidth)
-              : Math.min(maxBubbleWidth, Math.max(minBubbleWidth, Math.max(replyNeededWidth, bubbleMetrics.width + 32)))
+            // Width
+            width: isBorderlessMedia
+              ? targetMediaWidth
+              : (fitsSingleLine
+                  ? Math.max(minBubbleWidth, inlineNeededWidth)
+                  : Math.min(maxBubbleWidth, Math.max(minBubbleWidth, Math.max(replyNeededWidth, isVisualMedia ? targetMediaWidth : (bubbleMetrics.width + 32)))))
 
-            // Height is strictly compact for 1-line messages (~34-36px pill)
-            height: fitsSingleLine
-              ? 36
-              : (bubbleCol.implicitHeight + 14)
+            // Height
+            height: isBorderlessMedia
+              ? targetMediaHeight
+              : (fitsSingleLine
+                  ? 36
+                  : (bubbleCol.implicitHeight + (isVisualMedia ? 0 : 14)))
 
             // Modern capsule corners: 16px radius with subtle corner anchor
+            // Visual borderless media always uses uniform 16px radius on all 4 corners
             topLeftRadius: 16
             topRightRadius: 16
-            bottomLeftRadius: msgDelegate.isOutgoing ? 16 : 4
-            bottomRightRadius: msgDelegate.isOutgoing ? 4 : 16
+            bottomLeftRadius: isBorderlessMedia ? 16 : (msgDelegate.isOutgoing ? 16 : 4)
+            bottomRightRadius: isBorderlessMedia ? 16 : (msgDelegate.isOutgoing ? 4 : 16)
 
-            color: msgDelegate.isOutgoing
-              ? Qt.rgba(0.30, 0.48, 0.86, 0.72)
-              : Qt.rgba(0.18, 0.20, 0.23, 0.76)
-            border.width: 1
-            border.color: msgDelegate.isOutgoing
-              ? Qt.rgba(1, 1, 1, 0.30)
-              : Qt.rgba(1, 1, 1, 0.22)
+            color: isBorderlessMedia
+              ? "transparent"
+              : (msgDelegate.isOutgoing
+                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.88)
+                  : Theme.elevatedBackground)
+            border.width: isBorderlessMedia ? 0 : 1
+            border.color: msgDelegate.isOutgoing ? Qt.lighter(Theme.accent, 1.18) : Theme.divider
+            clip: isBorderlessMedia
 
-            layer.enabled: true
+            layer.enabled: !isBorderlessMedia
 
             // === 1-Line Compact Capsule Mode (Telegram/WhatsApp style) ===
             Item {
@@ -310,38 +350,270 @@ Rectangle {
 
                 Label {
                   text: modelData.time || ""
-                  color: Qt.rgba(1, 1, 1, 0.52)
+                  color: Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
-                  color: Qt.rgba(1, 1, 1, 0.65)
+                  color: Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
                 }
               }
             }
 
-            // === Multi-Line / Reply Message Mode ===
+            // === Borderless Media Mode (No caption, no reply) ===
+            Item {
+              anchors.fill: parent
+              visible: msgDelegate.isBorderlessMedia
+
+              Item {
+                id: borderlessMediaBox
+                anchors.fill: parent
+
+                Image {
+                  id: borderlessImage
+                  anchors.fill: parent
+                  source: (modelData.filePath && modelData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: true
+                  smooth: true
+                  visible: false
+                }
+
+                AnimatedImage {
+                  id: borderlessGif
+                  anchors.fill: parent
+                  source: (modelData.filePath && modelData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: true
+                  smooth: true
+                  visible: false
+
+                  property int remainingLoops: 3
+
+                  onFrameChanged: {
+                    if (frameCount > 1 && currentFrame === frameCount - 1) {
+                      remainingLoops--
+                      if (remainingLoops <= 0) {
+                        paused = true
+                      }
+                    }
+                  }
+                }
+
+                Rectangle {
+                  id: borderlessPlaceholder
+                  anchors.fill: parent
+                  radius: 16
+                  color: Qt.darker(Theme.controlBackground, 1.25)
+                  visible: msgDelegate.isAnimation ? (borderlessGif.status !== AnimatedImage.Ready) : (borderlessImage.status !== Image.Ready)
+                }
+
+                Rectangle {
+                  id: borderlessMask
+                  anchors.fill: parent
+                  radius: 16
+                  color: "white"
+                  visible: false
+                }
+
+                OpacityMask {
+                  anchors.fill: parent
+                  source: msgDelegate.isAnimation ? borderlessGif : borderlessImage
+                  maskSource: borderlessMask
+                  visible: msgDelegate.isAnimation ? (borderlessGif.status === AnimatedImage.Ready) : (borderlessImage.status === Image.Ready)
+                }
+
+                // Downloading / Loading state
+                Column {
+                  anchors.centerIn: parent
+                  visible: msgDelegate.isAnimation ? !borderlessGif.visible : !borderlessImage.visible
+                  spacing: 6
+
+                  Rectangle {
+                    width: 44
+                    height: 44
+                    radius: 22
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Qt.rgba(0, 0, 0, 0.45)
+
+                    BusyIndicator {
+                      anchors.centerIn: parent
+                      running: modelData.isDownloading || !modelData.filePath
+                      width: 28
+                      height: 28
+                    }
+                  }
+
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.isDownloading ? "Downloading..." : (msgDelegate.isVideo ? "Video" : (msgDelegate.isAnimation ? "GIF" : "Photo"))
+                    color: "#FFFFFF"
+                    font.pixelSize: 12
+                  }
+                }
+
+                // Play icon for video
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: 44
+                  height: 44
+                  radius: 22
+                  color: Qt.rgba(0, 0, 0, 0.52)
+                  visible: msgDelegate.isVideo && borderlessImage.visible
+
+                  Label {
+                    anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: 1
+                    text: "▶"
+                    color: "#FFFFFF"
+                    font.pixelSize: 16
+                  }
+                }
+
+                // GIF Badge (top-left) - Clickable to restart GIF playback
+                Rectangle {
+                  anchors.top: parent.top
+                  anchors.left: parent.left
+                  anchors.margins: 8
+                  radius: 4
+                  height: 18
+                  width: gifRow1.implicitWidth + 8
+                  color: borderlessGif.paused ? Theme.accent : Qt.rgba(0, 0, 0, 0.55)
+                  visible: msgDelegate.isAnimation
+
+                  Row {
+                    id: gifRow1
+                    anchors.centerIn: parent
+                    spacing: 3
+
+                    Label {
+                      text: borderlessGif.paused ? "▶" : ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 8
+                      visible: borderlessGif.paused
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Label {
+                      id: gifText1
+                      text: "GIF"
+                      color: "#FFFFFF"
+                      font.pixelSize: 10
+                      font.weight: Font.Bold
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      borderlessGif.remainingLoops = 3
+                      borderlessGif.paused = false
+                    }
+                  }
+                }
+
+                // Video Duration Badge (top-left)
+                Rectangle {
+                  anchors.top: parent.top
+                  anchors.left: parent.left
+                  anchors.margins: 8
+                  radius: 4
+                  height: 18
+                  width: durText1.implicitWidth + 8
+                  color: Qt.rgba(0, 0, 0, 0.55)
+                  visible: msgDelegate.isVideo && modelData.duration > 0
+
+                  Label {
+                    id: durText1
+                    function formatDur(sec) {
+                      var m = Math.floor(sec / 60)
+                      var s = sec % 60
+                      return m + ":" + (s < 10 ? "0" : "") + s
+                    }
+                    anchors.centerIn: parent
+                    text: formatDur(modelData.duration)
+                    color: "#FFFFFF"
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                  }
+                }
+
+                // Floating Time & Status Pill (bottom-right)
+                Rectangle {
+                  anchors.right: parent.right
+                  anchors.bottom: parent.bottom
+                  anchors.margins: 8
+                  radius: 10
+                  height: 20
+                  width: floatingMetaRow1.implicitWidth + 12
+                  color: Qt.rgba(0, 0, 0, 0.5)
+
+                  Row {
+                    id: floatingMetaRow1
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    Label {
+                      text: modelData.time || ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 11
+                    }
+
+                    Label {
+                      text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 11
+                      visible: text.length > 0
+                    }
+                  }
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    if (msgDelegate.isAnimation && borderlessGif.visible) {
+                      if (borderlessGif.paused) {
+                        borderlessGif.remainingLoops = 3
+                        borderlessGif.paused = false
+                      } else {
+                        borderlessGif.paused = true
+                      }
+                      return
+                    }
+                    if (modelData.filePath && modelData.filePath !== "") {
+                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                    }
+                  }
+                }
+              }
+            }
+
+            // === Multi-Line / Reply / Document / Captioned Media Mode ===
             Column {
               id: bubbleCol
               anchors.fill: parent
-              anchors.leftMargin: 12
-              anchors.rightMargin: 12
-              anchors.topMargin: 7
+              anchors.leftMargin: msgDelegate.isVisualMedia ? 0 : 12
+              anchors.rightMargin: msgDelegate.isVisualMedia ? 0 : 12
+              anchors.topMargin: msgDelegate.isVisualMedia ? 0 : 7
               anchors.bottomMargin: 7
-              visible: !msgDelegate.fitsSingleLine
-              spacing: 4
+              visible: !msgDelegate.fitsSingleLine && !msgDelegate.isBorderlessMedia
+              spacing: 6
 
               // Reply preview bubble block
               Rectangle {
                 id: replyContainer
-                width: parent.width
+                width: parent.width - (msgDelegate.isVisualMedia ? 16 : 0)
+                anchors.horizontalCenter: msgDelegate.isVisualMedia ? parent.horizontalCenter : undefined
                 visible: msgDelegate.hasReply
                 implicitHeight: replyInnerCol.implicitHeight + 8
                 radius: 6
-                color: Qt.rgba(0, 0, 0, 0.14)
+                color: Qt.darker(Theme.elevatedBackground, 1.18)
 
                 Rectangle {
                   id: replyIndicator
@@ -351,7 +623,7 @@ Rectangle {
                   anchors.bottom: parent.bottom
                   anchors.margins: 3
                   radius: 1.5
-                  color: Qt.rgba(1, 1, 1, 0.75)
+                  color: Theme.accent
                 }
 
                 Column {
@@ -370,7 +642,7 @@ Rectangle {
                     width: parent.width
                     visible: text.length > 0
                     text: modelData.replySender || (msgDelegate.isOutgoing ? "Reply" : root.chatName)
-                    color: Qt.rgba(1, 1, 1, 0.95)
+                    color: Theme.primaryText
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
@@ -380,7 +652,7 @@ Rectangle {
                     id: replyContentText
                     width: parent.width
                     text: modelData.replyText || ""
-                    color: Qt.rgba(1, 1, 1, 0.70)
+                    color: Theme.secondaryText
                     font.pixelSize: 12
                     elide: Text.ElideRight
                     maximumLineCount: 1
@@ -388,10 +660,272 @@ Rectangle {
                 }
               }
 
+              // Visual Media with Caption (Photo / Video / GIF)
+              Item {
+                id: captionedMediaBox
+                width: parent.width
+                height: msgDelegate.targetMediaHeight
+                visible: msgDelegate.isVisualMedia
+
+                Image {
+                  id: captionedImage
+                  anchors.fill: parent
+                  source: (modelData.filePath && modelData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: true
+                  smooth: true
+                  visible: false
+                }
+
+                AnimatedImage {
+                  id: captionedGif
+                  anchors.fill: parent
+                  source: (modelData.filePath && modelData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: true
+                  smooth: true
+                  visible: false
+
+                  property int remainingLoops: 3
+
+                  onFrameChanged: {
+                    if (frameCount > 1 && currentFrame === frameCount - 1) {
+                      remainingLoops--
+                      if (remainingLoops <= 0) {
+                        paused = true
+                      }
+                    }
+                  }
+                }
+
+                Rectangle {
+                  id: captionedPlaceholder
+                  anchors.fill: parent
+                  topLeftRadius: 16
+                  topRightRadius: 16
+                  bottomLeftRadius: 0
+                  bottomRightRadius: 0
+                  color: Qt.darker(Theme.controlBackground, 1.25)
+                  visible: msgDelegate.isAnimation ? (captionedGif.status !== AnimatedImage.Ready) : (captionedImage.status !== Image.Ready)
+                }
+
+                Rectangle {
+                  id: captionedMask
+                  anchors.fill: parent
+                  topLeftRadius: 16
+                  topRightRadius: 16
+                  bottomLeftRadius: 0
+                  bottomRightRadius: 0
+                  color: "white"
+                  visible: false
+                }
+
+                OpacityMask {
+                  anchors.fill: parent
+                  source: msgDelegate.isAnimation ? captionedGif : captionedImage
+                  maskSource: captionedMask
+                  visible: msgDelegate.isAnimation ? (captionedGif.status === AnimatedImage.Ready) : (captionedImage.status === Image.Ready)
+                }
+
+                // Downloading state
+                Column {
+                  anchors.centerIn: parent
+                  visible: msgDelegate.isAnimation ? !captionedGif.visible : !captionedImage.visible
+                  spacing: 6
+
+                  Rectangle {
+                    width: 44
+                    height: 44
+                    radius: 22
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Qt.rgba(0, 0, 0, 0.45)
+
+                    BusyIndicator {
+                      anchors.centerIn: parent
+                      running: modelData.isDownloading || !modelData.filePath
+                      width: 28
+                      height: 28
+                    }
+                  }
+
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.isDownloading ? "Downloading..." : (msgDelegate.isVideo ? "Video" : (msgDelegate.isAnimation ? "GIF" : "Photo"))
+                    color: "#FFFFFF"
+                    font.pixelSize: 12
+                  }
+                }
+
+                // Play icon for video
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: 44
+                  height: 44
+                  radius: 22
+                  color: Qt.rgba(0, 0, 0, 0.52)
+                  visible: msgDelegate.isVideo && captionedImage.visible
+
+                  Label {
+                    anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: 1
+                    text: "▶"
+                    color: "#FFFFFF"
+                    font.pixelSize: 16
+                  }
+                }
+
+                // GIF Badge (top-left) - Clickable to restart GIF playback
+                Rectangle {
+                  anchors.top: parent.top
+                  anchors.left: parent.left
+                  anchors.margins: 8
+                  radius: 4
+                  height: 18
+                  width: gifRow2.implicitWidth + 8
+                  color: captionedGif.paused ? Theme.accent : Qt.rgba(0, 0, 0, 0.55)
+                  visible: msgDelegate.isAnimation
+
+                  Row {
+                    id: gifRow2
+                    anchors.centerIn: parent
+                    spacing: 3
+
+                    Label {
+                      text: captionedGif.paused ? "▶" : ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 8
+                      visible: captionedGif.paused
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Label {
+                      id: gifText2
+                      text: "GIF"
+                      color: "#FFFFFF"
+                      font.pixelSize: 10
+                      font.weight: Font.Bold
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      captionedGif.remainingLoops = 3
+                      captionedGif.paused = false
+                    }
+                  }
+                }
+
+                // Video Duration Badge
+                Rectangle {
+                  anchors.top: parent.top
+                  anchors.left: parent.left
+                  anchors.margins: 8
+                  radius: 4
+                  height: 18
+                  width: durText2.implicitWidth + 8
+                  color: Qt.rgba(0, 0, 0, 0.55)
+                  visible: msgDelegate.isVideo && modelData.duration > 0
+
+                  Label {
+                    id: durText2
+                    function formatDur(sec) {
+                      var m = Math.floor(sec / 60)
+                      var s = sec % 60
+                      return m + ":" + (s < 10 ? "0" : "") + s
+                    }
+                    anchors.centerIn: parent
+                    text: formatDur(modelData.duration)
+                    color: "#FFFFFF"
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                  }
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    if (msgDelegate.isAnimation && captionedGif.visible) {
+                      if (captionedGif.paused) {
+                        captionedGif.remainingLoops = 3
+                        captionedGif.paused = false
+                      } else {
+                        captionedGif.paused = true
+                      }
+                      return
+                    }
+                    if (modelData.filePath && modelData.filePath !== "") {
+                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                    }
+                  }
+                }
+              }
+
+              // Document / File block
+              Rectangle {
+                id: docBox
+                width: parent.width
+                implicitHeight: 52
+                radius: 10
+                color: Qt.darker(Theme.controlBackground, 1.15)
+                visible: msgDelegate.isDoc
+
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.margins: 8
+                  spacing: 10
+
+                  Rectangle {
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    radius: 18
+                    color: Theme.accent
+
+                    Label {
+                      anchors.centerIn: parent
+                      text: "📄"
+                      font.pixelSize: 18
+                    }
+                  }
+
+                  ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                      Layout.fillWidth: true
+                      text: modelData.fileName || "Document"
+                      color: Theme.primaryText
+                      font.pixelSize: 13
+                      font.weight: Font.Medium
+                      elide: Text.ElideMiddle
+                    }
+
+                    Label {
+                      function formatSize(bytes) {
+                        if (!bytes || bytes <= 0) return ""
+                        if (bytes < 1024) return bytes + " B"
+                        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB"
+                        return (bytes / 1048576).toFixed(1) + " MB"
+                      }
+                      text: (modelData.isDownloading ? "Downloading • " : (modelData.filePath ? "Downloaded • " : "")) + formatSize(modelData.fileSize)
+                      color: Theme.secondaryText
+                      font.pixelSize: 11
+                    }
+                  }
+                }
+              }
+
+              // Text / Caption Label
               Label {
                 id: bubbleText
-                width: parent.width
-                text: modelData.text || ""
+                width: parent.width - (msgDelegate.isVisualMedia ? 20 : 0)
+                anchors.horizontalCenter: msgDelegate.isVisualMedia ? parent.horizontalCenter : undefined
+                visible: text.length > 0 && !(msgDelegate.isPhoto && text === "Photo") && !(msgDelegate.isDoc && text === "Document")
+                text: modelData.caption ? modelData.caption : (modelData.text || "")
                 color: Theme.primaryText
                 wrapMode: Text.WordWrap
                 font.pixelSize: 15
@@ -400,19 +934,20 @@ Rectangle {
 
               Row {
                 anchors.right: parent.right
+                anchors.rightMargin: msgDelegate.isVisualMedia ? 10 : 0
                 spacing: 3
                 visible: (modelData.time !== undefined && modelData.time !== "") || (msgDelegate.isOutgoing && modelData.status !== "")
 
                 Label {
                   id: metaTimeLabel
                   text: modelData.time || ""
-                  color: Qt.rgba(1, 1, 1, 0.52)
+                  color: Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
-                  color: Qt.rgba(1, 1, 1, 0.65)
+                  color: Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
                 }
@@ -427,6 +962,7 @@ Rectangle {
               color: Qt.rgba(0, 0, 0, 0.32)
               verticalOffset: 3
               z: -1
+              visible: !msgDelegate.isBorderlessMedia
             }
           }
         }
@@ -483,9 +1019,9 @@ Rectangle {
     Rectangle {
       anchors.fill: parent
       z: -1
-      color: Qt.rgba(0.10, 0.12, 0.15, 0.86)
-      border.color: Qt.rgba(1, 1, 1, 0.14)
-      border.width: 1
+      color: "transparent"
+      border.color: "transparent"
+      border.width: 0
     }
 
       RowLayout {
@@ -500,6 +1036,7 @@ Rectangle {
           padding: 8
           implicitWidth: 40
           implicitHeight: 40
+          onClicked: fileDialog.open()
           background: Rectangle {
             radius: width / 2
             color: parent.hovered ? Theme.accent : root.glassColor
@@ -535,8 +1072,8 @@ Rectangle {
           background: Rectangle {
             id: messageInputGlass
             radius: 20
-            color: Qt.rgba(0.18, 0.20, 0.23, 0.88)
-            border.color: root.glassBorder
+            color: Theme.controlBackground
+            border.color: Theme.divider
             border.width: 1
 
             layer.enabled: true
@@ -565,6 +1102,96 @@ Rectangle {
           }
         }
       }
+  }
+
+  FileDialog {
+    id: fileDialog
+    title: "Select file to send"
+    currentFolder: StandardPaths.standardLocations(StandardPaths.PicturesLocation)[0] || ""
+    onAccepted: {
+      var path = fileDialog.selectedFile.toString()
+      // Remove file:// prefix if present
+      if (path.indexOf("file://") === 0) {
+        path = path.substring(7)
+      }
+      var caption = messageInput.text.trim()
+      messageInput.text = ""
+      root.sendMediaRequested(path, caption)
+    }
+  }
+
+  // Full-Screen / Lightbox Media Viewer Modal
+  Rectangle {
+    id: mediaViewer
+    z: 100
+    anchors.fill: parent
+    visible: opacity > 0
+    opacity: 0
+    color: Qt.rgba(0, 0, 0, 0.88)
+
+    Behavior on opacity {
+      NumberAnimation { duration: 180; easing.type: Easing.OutQuad }
+    }
+
+    property string mediaPath: ""
+    property string mediaType: ""
+
+    function show(path, type) {
+      mediaPath = path
+      mediaType = type
+      opacity = 1
+    }
+
+    function hide() {
+      opacity = 0
+    }
+
+    // Top action bar
+    RowLayout {
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.margins: 16
+      z: 2
+
+      Item { Layout.fillWidth: true }
+
+      ToolButton {
+        text: "✕"
+        font.pixelSize: 18
+        implicitWidth: 36
+        implicitHeight: 36
+        focusPolicy: Qt.NoFocus
+        onClicked: mediaViewer.hide()
+        background: Rectangle {
+          radius: 18
+          color: parent.hovered ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(0, 0, 0, 0.4)
+        }
+      }
+    }
+
+    // Center Image preview with zoom/pan support
+    Item {
+      anchors.fill: parent
+      anchors.margins: 40
+
+      Image {
+        id: viewerImage
+        anchors.centerIn: parent
+        width: Math.min(parent.width, implicitWidth > 0 ? implicitWidth : parent.width)
+        height: Math.min(parent.height, implicitHeight > 0 ? implicitHeight : parent.height)
+        source: (mediaViewer.mediaPath && mediaViewer.mediaPath !== "") ? ("file://" + mediaViewer.mediaPath) : ""
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        asynchronous: true
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      z: -1
+      onClicked: mediaViewer.hide()
+    }
   }
 
   Button {

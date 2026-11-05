@@ -36,6 +36,7 @@ public:
   Q_INVOKABLE void selectQrLogin();
   Q_INVOKABLE void loadConversation(qint64 chatId, qint64 fromMessageId = 0);
   Q_INVOKABLE void sendMessage(qint64 chatId, const QString &text);
+  Q_INVOKABLE void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString());
   Q_INVOKABLE void viewMessage(qint64 chatId, qint64 messageId);
   QVariantList conversationMessages() const;
   bool typing() const;

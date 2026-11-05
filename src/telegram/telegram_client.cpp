@@ -38,7 +38,19 @@ TelegramClient::TelegramClient(QObject *parent)
       }
       for (const auto &v : messages) {
         const auto m = v.toMap();
-        map.insert(m.value("messageId").toLongLong(), m);
+        const qint64 mid = m.value("messageId").toLongLong();
+        if (map.contains(mid)) {
+          // If we already had this message and it had a downloaded filePath, preserve it!
+          auto existing = map.value(mid);
+          if (m.value("filePath").toString().isEmpty() && !existing.value("filePath").toString().isEmpty()) {
+            QVariantMap updated = m;
+            updated["filePath"] = existing.value("filePath");
+            updated["isDownloading"] = false;
+            map.insert(mid, updated);
+            continue;
+          }
+        }
+        map.insert(mid, m);
       }
       QVariantList merged;
       for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
@@ -99,6 +111,21 @@ TelegramClient::TelegramClient(QObject *parent)
     if (changed) emit conversationMessagesChanged();
   });
   connect(&m_worker, &TelegramWorker::chatTyping, this, [this](qint64 chatId, bool active) { if (chatId != m_activeChatId || m_typing == active) return; m_typing = active; emit typingChanged(); });
+  connect(&m_worker, &TelegramWorker::messageFileUpdated, this, [this](qint64 chatId, qint64 messageId, const QString &filePath) {
+    if (chatId != m_activeChatId) return;
+    bool changed = false;
+    for (QVariant &value : m_conversationMessages) {
+      QVariantMap message = value.toMap();
+      if (message.value("messageId").toLongLong() == messageId) {
+        message["filePath"] = filePath;
+        message["isDownloading"] = false;
+        value = message;
+        changed = true;
+        break;
+      }
+    }
+    if (changed) emit conversationMessagesChanged();
+  });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
             if (m_qrCodeLink != link) {
@@ -185,6 +212,9 @@ void TelegramClient::selectQrLogin() { m_worker.selectQrLogin(); }
 void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_activeChatId = chatId; m_typing = false; emit typingChanged(); m_conversationMessages.clear(); emit conversationMessagesChanged(); m_worker.loadConversation(chatId, fromMessageId); }
 void TelegramClient::sendMessage(qint64 chatId, const QString &text) {
   if (chatId != 0 && !text.trimmed().isEmpty()) m_worker.sendMessage(chatId, text.trimmed());
+}
+void TelegramClient::sendMedia(qint64 chatId, const QString &filePath, const QString &caption) {
+  if (chatId != 0 && !filePath.trimmed().isEmpty()) m_worker.sendMedia(chatId, filePath.trimmed(), caption.trimmed());
 }
 void TelegramClient::viewMessage(qint64 chatId, qint64 messageId) {
   if (chatId != 0 && messageId != 0) m_worker.viewMessage(chatId, messageId);

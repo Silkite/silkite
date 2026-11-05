@@ -629,6 +629,12 @@ ApplicationWindow {
           telegramClient.sendMessage(window.selectedChatId, text)
         }
       }
+
+      onSendMediaRequested: function(filePath, caption) {
+        if (window.selectedChatId) {
+          telegramClient.sendMedia(window.selectedChatId, filePath, caption)
+        }
+      }
       }
     }
 

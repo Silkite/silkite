@@ -22,6 +22,7 @@ public:
   void selectQrLogin();
   void loadConversation(qint64 chatId, qint64 fromMessageId = 0, int limit = 50);
   void sendMessage(qint64 chatId, const QString &text);
+  void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString());
   void viewMessage(qint64 chatId, qint64 messageId);
 
 protected:
@@ -41,14 +42,16 @@ signals:
   void messageSendSucceeded(qint64 chatId, qint64 oldMessageId, const QVariantMap &message);
   void chatReadOutboxUpdated(qint64 chatId, qint64 lastReadOutboxMessageId);
   void chatTyping(qint64 chatId, bool active);
+  void messageFileUpdated(qint64 chatId, qint64 messageId, const QString &filePath);
 
 private:
-  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, ViewMessage };
+  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, SendMedia, ViewMessage };
   struct Command {
     CommandType type;
     QString value;
     qint64 chatId = 0;
     qint64 messageId = 0;
+    QString extra;
   };
   void enqueue(Command command);
   QMutex m_mutex;

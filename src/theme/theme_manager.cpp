@@ -22,11 +22,11 @@ ThemeManager::Palette palette(const char *window, const char *panel,
 ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
   m_availableThemes = {"Gruvbox", "Tokyo Night", "Everforest", "Nord",
                        "Silkite Dark"};
-  m_palettes.insert("Gruvbox", palette("#282828", "#32302F", "#3C3836", "#504945", "#EBDBB2", "#A89984", "#FABD2F", "#282828", "#665C54"));
-  m_palettes.insert("Tokyo Night", palette("#16161E", "#1A1B26", "#24283B", "#292E42", "#C0CAF5", "#7982A9", "#7AA2F7", "#16161E", "#3B4261"));
-  m_palettes.insert("Everforest", palette("#2D353B", "#343F44", "#3D484D", "#475258", "#D3C6AA", "#9DA9A0", "#A7C080", "#2D353B", "#56635F"));
-  m_palettes.insert("Nord", palette("#2E3440", "#3B4252", "#434C5E", "#4C566A", "#ECEFF4", "#D8DEE9", "#88C0D0", "#2E3440", "#616E88"));
-  m_palettes.insert("Silkite Dark", palette("#1C222B", "#29313C", "#252D38", "#29313C", "#F5F7FA", "#AAB3C0", "#82AFFF", "#17202B", "#39424F"));
+  m_palettes.insert("Gruvbox", palette("#1D2021", "#282828", "#3C3836", "#504945", "#FBF1C7", "#BDAE93", "#FABD2F", "#1D2021", "#665C54"));
+  m_palettes.insert("Tokyo Night", palette("#101014", "#16161E", "#24283B", "#2F354F", "#E6EAFB", "#A9B1D6", "#7AA2F7", "#101014", "#414868"));
+  m_palettes.insert("Everforest", palette("#232A2E", "#2D353B", "#3D484D", "#4F5B58", "#F3EAD3", "#B7C5B5", "#A7C080", "#232A2E", "#56635F"));
+  m_palettes.insert("Nord", palette("#242933", "#2E3440", "#434C5E", "#4C566A", "#F8FAFC", "#D8DEE9", "#88C0D0", "#242933", "#616E88"));
+  m_palettes.insert("Silkite Dark", palette("#11161D", "#1A222D", "#253244", "#304158", "#F7FAFF", "#B8C5D6", "#7DB7FF", "#11161D", "#43546A"));
   load();
 }
 
