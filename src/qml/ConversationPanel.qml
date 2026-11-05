@@ -5,12 +5,15 @@ import QtQuick.Layouts
 Rectangle {
   id: root
 
-  property string chatName: "Select a conversation"
+  property string chatName: ""
   property string chatInitials: "?"
   property string avatarColor: "#526C8A"
   property string lastMessage: ""
+  property var messages: []
+  property bool hasConversation: chatName !== ""
+  property string appVersion: ""
 
-  color: "#1C222B"
+  color: Theme.windowBackground
 
   ColumnLayout {
     anchors.fill: parent
@@ -18,10 +21,11 @@ Rectangle {
 
     // Conversation header
     Rectangle {
+      visible: root.hasConversation
       Layout.fillWidth: true
       Layout.preferredHeight: 72
 
-      color: "#252D38"
+      color: Theme.elevatedBackground
 
       RowLayout {
         anchors.fill: parent
@@ -41,7 +45,7 @@ Rectangle {
             anchors.centerIn: parent
 
             text: root.chatInitials
-            color: "white"
+            color: Theme.primaryText
             font.bold: true
           }
         }
@@ -51,7 +55,7 @@ Rectangle {
           Label {
             text: root.chatName
 
-            color: "white"
+            color: Theme.primaryText
             font.bold: true
             font.pixelSize: 15
           }
@@ -59,7 +63,7 @@ Rectangle {
           Label {
             text: "Telegram conversation"
 
-            color: "#AAB3C0"
+            color: Theme.secondaryText
             font.pixelSize: 11
           }
         }
@@ -85,36 +89,56 @@ Rectangle {
       Layout.fillWidth: true
       Layout.fillHeight: true
 
-      ColumnLayout {
-        anchors.centerIn: parent
-        spacing: 14
-
+      ListView {
+        anchors.fill: parent
+        anchors.margins: 18
+        model: root.messages
+        delegate: Label {
+          width: ListView.view.width
+          text: modelData.time + "  " + modelData.text
+          color: Theme.primaryText
+          horizontalAlignment: modelData.outgoing ? Text.AlignRight : Text.AlignLeft
+          wrapMode: Text.WordWrap
+          padding: 8
+        }
         Label {
-          text: "Welcome to Silkite"
-
-          color: "#FFFFFF"
-          font.pixelSize: 20
-          font.bold: true
-
-          Layout.alignment: Qt.AlignHCenter
+          anchors.centerIn: parent
+          visible: root.hasConversation && root.messages.length === 0
+          text: "Your conversation will appear here."
+          color: Theme.secondaryText
         }
 
         Label {
-          text: "Your conversation will appear here."
+          id: emptyLogo
+          anchors.centerIn: parent
+          visible: !root.hasConversation
+          text: "Silkite"
+          color: Theme.primaryText
+          font.pixelSize: 44
+          font.bold: true
+          opacity: 0.12
+        }
 
-          color: "#AAB3C0"
-
-          Layout.alignment: Qt.AlignHCenter
+        Label {
+          anchors.horizontalCenter: emptyLogo.horizontalCenter
+          anchors.top: emptyLogo.bottom
+          anchors.topMargin: 6
+          visible: !root.hasConversation
+          text: "v" + root.appVersion
+          color: Theme.primaryText
+          font.pixelSize: 13
+          opacity: 0.12
         }
       }
     }
 
     // Message composer
     Rectangle {
+      visible: root.hasConversation
       Layout.fillWidth: true
       Layout.preferredHeight: 78
 
-      color: "#252D38"
+      color: Theme.elevatedBackground
 
       RowLayout {
         anchors.fill: parent
@@ -131,11 +155,11 @@ Rectangle {
 
           placeholderText: "Write a message..."
 
-          color: "white"
+          color: Theme.primaryText
 
           background: Rectangle {
             radius: 10
-            color: "#1C222B"
+            color: Theme.windowBackground
           }
         }
 

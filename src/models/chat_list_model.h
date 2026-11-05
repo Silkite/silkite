@@ -2,6 +2,7 @@
 #include <QAbstractListModel>
 #include <QString>
 #include <QVector>
+#include <QVariantMap>
 
 struct Chat {
   qint64 id;
@@ -42,6 +43,11 @@ public:
   void setFilterText(const QString &text);
 
   Q_INVOKABLE QVariantMap chatAt(int row) const;
+  Q_INVOKABLE QVariantMap chatById(qint64 chatId) const;
+
+public slots:
+  void upsertChat(const QVariantMap &chat);
+  void clearChats();
 
 signals:
   void filterTextChanged();
@@ -53,4 +59,5 @@ private:
   QString m_filterText;
 
   void updateFilter();
+  int indexOfChat(qint64 chatId) const;
 };

@@ -9,7 +9,7 @@ Rectangle {
 
   signal navigationRequested(string page)
 
-  color: "#202630"
+  color: Theme.elevatedBackground
 
   ColumnLayout {
     anchors.fill: parent
@@ -21,7 +21,7 @@ Rectangle {
       text: "S"
       font.pixelSize: 26
       font.bold: true
-      color: "#82AFFF"
+      color: Theme.accent
 
       Layout.alignment: Qt.AlignHCenter
     }
@@ -29,7 +29,7 @@ Rectangle {
     Rectangle {
       Layout.fillWidth: true
       Layout.preferredWidth: 1
-      color: "#39424F"
+      color: Theme.divider
     }
 
     ToolButton {
@@ -39,7 +39,7 @@ Rectangle {
 
       background: Rectangle {
         radius: 10
-        color: root.currentPage === "chats" ? "#414D5D" : "transparent"
+        color: root.currentPage === "chats" ? Theme.accent : "transparent"
       }
       onClicked: root.navigationRequested("chats")
     }
@@ -49,7 +49,7 @@ Rectangle {
       Layout.alignment: Qt.AlignHCenter
       background: Rectangle {
         radius: 10
-        color: root.currentPage === "contacts" ? "#414D5D" : "transparent"
+        color: root.currentPage === "contacts" ? Theme.accent : "transparent"
       }
       onClicked: root.navigationRequested("contacts")
     }
@@ -59,7 +59,7 @@ Rectangle {
       Layout.alignment: Qt.AlignHCenter
       background: Rectangle {
         radius: 10
-        color: root.currentPage === "calls" ? "#414D5D" : "transparent"
+        color: root.currentPage === "calls" ? Theme.accent : "transparent"
       }
       onClicked: root.navigationRequested("calls")
     }
@@ -72,7 +72,7 @@ Rectangle {
       Layout.alignment: Qt.AlignHCenter
       background: Rectangle {
         radius: 10
-        color: root.currentPage === "settings" ? "#414D5D" : "transparent"
+        color: root.currentPage === "settings" ? Theme.accent : "transparent"
       }
       onClicked: root.navigationRequested("settings")
     }

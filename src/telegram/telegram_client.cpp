@@ -20,6 +20,9 @@ TelegramClient::TelegramClient(QObject *parent)
           });
   connect(&m_worker, &TelegramWorker::errorOccurred, this,
           &TelegramClient::errorOccurred);
+  connect(&m_worker, &TelegramWorker::chatUpdated, this, &TelegramClient::chatUpdated);
+  connect(&m_worker, &TelegramWorker::chatsReset, this, &TelegramClient::chatsReset);
+  connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64, const QVariantList &messages, bool) { m_conversationMessages = messages; emit conversationMessagesChanged(); });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
             if (m_qrCodeLink != link) {
@@ -61,6 +64,20 @@ TelegramClient::TelegramClient(QObject *parent)
               emit qrCodeImagePathChanged();
             }
           });
+  connect(&m_worker, &TelegramWorker::authenticationCodeLengthChanged, this,
+          [this](int length) {
+            if (m_authenticationCodeLength != length) {
+              m_authenticationCodeLength = length;
+              emit authenticationCodeLengthChanged();
+            }
+          });
+  connect(&m_worker, &TelegramWorker::authenticationCodeTimeoutChanged, this,
+          [this](int seconds) {
+            if (m_authenticationCodeTimeout != seconds) {
+              m_authenticationCodeTimeout = seconds;
+              emit authenticationCodeTimeoutChanged();
+            }
+          });
 }
 
 QString TelegramClient::authorizationState() const {
@@ -68,6 +85,8 @@ QString TelegramClient::authorizationState() const {
 }
 QString TelegramClient::qrCodeLink() const { return m_qrCodeLink; }
 QString TelegramClient::qrCodeImagePath() const { return m_qrCodeImagePath; }
+int TelegramClient::authenticationCodeLength() const { return m_authenticationCodeLength; }
+int TelegramClient::authenticationCodeTimeout() const { return m_authenticationCodeTimeout; }
 void TelegramClient::start() {
   if (!m_worker.isRunning())
     m_worker.start();
@@ -84,3 +103,8 @@ void TelegramClient::submitCode(const QString &code) {
 }
 
 void TelegramClient::requestQrLogin() { m_worker.submitQrLogin(); }
+void TelegramClient::resendAuthenticationCode() { m_worker.resendAuthenticationCode(); }
+void TelegramClient::selectPhoneLogin() { m_worker.selectPhoneLogin(); }
+void TelegramClient::selectQrLogin() { m_worker.selectQrLogin(); }
+void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_worker.loadConversation(chatId, fromMessageId); }
+QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }

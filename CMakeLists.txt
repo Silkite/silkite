@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Qt6 REQUIRED COMPONENTS
   Quick
   Qml
+  QuickControls2
 )
 
 find_package(Td REQUIRED CONFIG
@@ -30,6 +31,8 @@ qt_add_executable(silkite
   src/main.cpp
   src/app_controller.cpp
   src/app_controller.h
+  src/theme/theme_manager.cpp
+  src/theme/theme_manager.h
 
   src/models/chat_list_model.cpp
   src/models/chat_list_model.h
@@ -61,6 +64,7 @@ target_link_libraries(silkite
   PRIVATE
     Qt6::Quick
     Qt6::Qml
+    Qt6::QuickControls2
     Td::TdStatic
     ${QRENCODE_LIBRARY}
 )

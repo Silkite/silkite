@@ -3,6 +3,8 @@
 #include <QMutex>
 #include <QQueue>
 #include <QString>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QThread>
 
 class TelegramWorker : public QThread {
@@ -15,6 +17,10 @@ public:
   void submitPhoneNumber(const QString &phoneNumber);
   void submitCode(const QString &code);
   void submitQrLogin();
+  void resendAuthenticationCode();
+  void selectPhoneLogin();
+  void selectQrLogin();
+  void loadConversation(qint64 chatId, qint64 fromMessageId = 0, int limit = 50);
 
 protected:
   void run() override;
@@ -22,11 +28,16 @@ protected:
 signals:
   void versionReceived(const QString &version);
   void authorizationStateChanged(const QString &state);
+  void authenticationCodeLengthChanged(int length);
+  void authenticationCodeTimeoutChanged(int seconds);
   void qrCodeLinkChanged(const QString &link);
   void errorOccurred(const QString &error);
+  void chatUpdated(const QVariantMap &chat);
+  void chatsReset();
+  void messagesLoaded(qint64 chatId, const QVariantList &messages, bool hasMore);
 
 private:
-  enum class CommandType { PhoneNumber, Code, QrLogin };
+  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History };
   struct Command {
     CommandType type;
     QString value;

@@ -4,10 +4,6 @@
 #include <QVariantMap>
 
 ChatListModel::ChatListModel(QObject *parent) : QAbstractListModel(parent) {
-  m_chats = {
-      {1, "Tom Hollam", "Hello, sup lol", "10:59", "TH", "#526C8A", 2},
-      {2, "Jeffery Dahmer", "Hello, sup lol", "10:59", "JD", "#7B638F", 2},
-      {3, "Patrick Bateman", "Hello, sup lol", "10:59", "PB", "#8B6C62", 2}};
   updateFilter();
 }
 
@@ -104,11 +100,11 @@ void ChatListModel::updateFilter() {
 }
 
 QVariantMap ChatListModel::chatAt(int row) const {
-  if (row < 0 || row >= m_chats.size()) {
+  if (row < 0 || row >= m_filteredIndices.size()) {
     return {};
   }
 
-  const Chat &chat = m_chats.at(row);
+  const Chat &chat = m_chats.at(m_filteredIndices.at(row));
   return {{"chatId", chat.id},
           {"name", chat.name},
           {"lastMessage", chat.lastMessage},
@@ -116,4 +112,40 @@ QVariantMap ChatListModel::chatAt(int row) const {
           {"initials", chat.initials},
           {"avatarColor", chat.avatarColor},
           {"unreadCount", chat.unreadCount}};
+}
+
+int ChatListModel::indexOfChat(qint64 chatId) const {
+  for (int i = 0; i < m_chats.size(); ++i)
+    if (m_chats.at(i).id == chatId) return i;
+  return -1;
+}
+
+QVariantMap ChatListModel::chatById(qint64 chatId) const {
+  const int i = indexOfChat(chatId);
+  if (i < 0) return {};
+  const Chat &c = m_chats.at(i);
+  return {{"chatId", c.id}, {"name", c.name}, {"lastMessage", c.lastMessage},
+          {"time", c.time}, {"initials", c.initials}, {"avatarColor", c.avatarColor},
+          {"unreadCount", c.unreadCount}};
+}
+
+void ChatListModel::clearChats() {
+  beginResetModel(); m_chats.clear(); m_filteredIndices.clear(); endResetModel();
+}
+
+void ChatListModel::upsertChat(const QVariantMap &v) {
+  const qint64 id = v.value("chatId").toLongLong();
+  if (!id) return;
+  const int i = indexOfChat(id);
+  Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", 0} : m_chats.at(i);
+  c.id = id;
+  if (v.contains("name")) c.name = v.value("name").toString();
+  if (v.contains("lastMessage")) c.lastMessage = v.value("lastMessage").toString();
+  if (v.contains("time")) c.time = v.value("time").toString();
+  if (v.contains("initials")) c.initials = v.value("initials").toString();
+  if (v.contains("avatarColor")) c.avatarColor = v.value("avatarColor").toString();
+  if (v.contains("unreadCount")) c.unreadCount = v.value("unreadCount").toInt();
+  if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
+  if (i < 0) m_chats.append(c); else m_chats[i] = c;
+  updateFilter();
 }

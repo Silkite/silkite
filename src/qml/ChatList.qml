@@ -6,11 +6,11 @@ Rectangle {
   id: root
 
   property var chatModel
-  property int selectedChatIndex: 0
+  property var selectedChatId: 0
 
-  signal chatSelected(int index)
+  signal chatSelected(var chatId)
 
-  color: "#29313C"
+  color: Theme.panelBackground
 
   ColumnLayout {
     anchors.fill: parent
@@ -21,7 +21,7 @@ Rectangle {
       text: "Chats"
       font.pixelSize: 23
       font.bold: true
-      color: "#FFFFFF"
+      color: Theme.primaryText
     }
 
     TextField {
@@ -29,14 +29,14 @@ Rectangle {
 
       Layout.fillWidth: true
       placeholderText: "Search chats..."
-      color: "#FFFFFF"
+      color: Theme.primaryText
       selectByMouse: true
 
       onTextChanged: root.chatModel.filterText = text
 
       background: Rectangle {
         radius: 9
-        color: "#202630"
+        color: Theme.elevatedBackground
       }
     }
 
@@ -54,6 +54,7 @@ Rectangle {
         id: chatDelegate
 
         required property string name
+        required property var chatId
         required property string lastMessage
         required property string time
         required property string initials
@@ -62,16 +63,17 @@ Rectangle {
 
         width: chatList.width
         height: 76
+        clip: true
 
         background: Rectangle {
           radius: 9
 
-          color: chatDelegate.originalIndex === root.selectedChatIndex
-                 ? "#414D5D"
+          color: chatDelegate.chatId === root.selectedChatId
+                 ? Theme.accent
                  : "transparent"
         }
 
-        onClicked: root.chatSelected(chatDelegate.originalIndex)
+        onClicked: root.chatSelected(chatDelegate.chatId)
 
         contentItem: RowLayout {
           spacing: 10
@@ -86,7 +88,7 @@ Rectangle {
             Label {
               anchors.centerIn: parent
               text: chatDelegate.initials
-              color: "#FFFFFF"
+              color: Theme.primaryText
               font.bold: true
             }
           }
@@ -102,15 +104,17 @@ Rectangle {
 
               Label {
                 text: chatDelegate.name
-                color: "#FFFFFF"
+                color: Theme.primaryText
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            maximumLineCount: 1
               }
 
               Label {
                 text: chatDelegate.time
-                color: "#AAB3C0"
+                color: Theme.secondaryText
                 font.pixelSize: 10
               }
             }
@@ -121,23 +125,25 @@ Rectangle {
 
               Label {
                 text: chatDelegate.lastMessage
-                color: "#AAB3C0"
+                color: Theme.secondaryText
                 elide: Text.ElideRight
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                maximumLineCount: 1
               }
 
               Rectangle {
                 Layout.preferredWidth: 20
                 Layout.preferredHeight: 20
                 radius: 10
-                color: "#82AFFF"
+                color: Theme.accent
 
                 visible: chatDelegate.unreadCount > 0
 
                 Label {
                   anchors.centerIn: parent
                   text: chatDelegate.unreadCount.toString()
-                  color: "#202630"
+                  color: Theme.accentText
                   font.pixelSize: 10
                   font.bold: true
                 }
@@ -151,7 +157,7 @@ Rectangle {
         anchors.centerIn: parent
         visible: chatList.count === 0
         text: "No chats found"
-        color: "#AAB3C0"
+        color: Theme.secondaryText
         font.pixelSize: 14
       }
     }
