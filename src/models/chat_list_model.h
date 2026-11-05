@@ -11,7 +11,9 @@ struct Chat {
   QString time;
   QString initials;
   QString avatarColor;
+  QString avatarPath;
   int unreadCount;
+  qint64 order = 0;
 };
 
 class ChatListModel : public QAbstractListModel {
@@ -27,7 +29,8 @@ public:
     TimeRole,
     InitialsRole,
     AvatarColorRole,
-    UnreadCountRole
+    UnreadCountRole,
+    AvatarPathRole
   };
 
   explicit ChatListModel(QObject *parent = nullptr);

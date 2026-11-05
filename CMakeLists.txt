@@ -53,6 +53,17 @@ qt_add_qml_module(silkite
     src/qml/Sidebar.qml
     src/qml/ChatList.qml
     src/qml/ConversationPanel.qml
+
+  RESOURCES
+    assets/logo-transparent.png
+    assets/icons/chat.svg
+    assets/icons/people.svg
+    assets/icons/call.svg
+    assets/icons/settings.svg
+    assets/icons/search.svg
+    assets/icons/more.svg
+    assets/icons/panel-left.svg
+    assets/icons/send.svg
 )
 
 target_include_directories(silkite

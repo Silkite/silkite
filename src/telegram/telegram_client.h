@@ -48,6 +48,7 @@ signals:
   void chatUpdated(const QVariantMap &chat);
   void chatsReset();
   void conversationMessagesChanged();
+  void messageReceived(qint64 chatId, const QVariantMap &message);
 
 private:
   TelegramWorker m_worker;
@@ -57,4 +58,5 @@ private:
   int m_authenticationCodeLength = 5;
   int m_authenticationCodeTimeout = 60;
   QVariantList m_conversationMessages;
+  qint64 m_activeChatId = 0;
 };

@@ -21,7 +21,8 @@ ApplicationWindow {
   property var selectedChatId: 0
   property string activeSection: "chats"
 
-  property var selectedChat: chatListModel.chatById(selectedChatId)
+  property var selectedChat: { chatRevision; return chatListModel.chatById(selectedChatId) }
+  property int chatRevision: 0
 
   property bool phoneLoginStarted: false
   property bool phoneSubmitted: false
@@ -30,7 +31,29 @@ ApplicationWindow {
   property string authError: ""
   property bool showQrLogin: true
   property bool compactLogin: width <= Screen.width * 0.5
+  property bool compactLayout: width <= Screen.width * 0.5
+  property bool chatListExpanded: !compactLayout
+  property bool chatListAutoExpanded: false
   property int compactContentWidth: Math.min(width - 32, 720)
+
+  onWidthChanged: {
+    if (width <= Screen.width * 0.5)
+      chatListExpanded = false
+    else
+      chatListExpanded = true
+    chatListAutoExpanded = false
+  }
+
+  Timer {
+    id: collapseChatListTimer
+    interval: 450
+    onTriggered: {
+      if (window.compactLayout && window.chatListAutoExpanded && !chatListPane.pointerInside) {
+        window.chatListExpanded = false
+        window.chatListAutoExpanded = false
+      }
+    }
+  }
   property real phoneBoxSize: compactLogin
     ? Math.max(24, Math.min(40, (compactContentWidth - 108 - 8 - (selectedCountryDigits - 1) * 4) / selectedCountryDigits))
     : 40
@@ -131,7 +154,7 @@ ApplicationWindow {
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
-            radius: 9
+            radius: height / 2
             color: parent.checked ? Theme.accent : Theme.controlBackground
           }
         }
@@ -150,7 +173,7 @@ ApplicationWindow {
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
-            radius: 9
+            radius: height / 2
             color: parent.checked ? Theme.accent : Theme.controlBackground
           }
         }
@@ -320,7 +343,7 @@ ApplicationWindow {
               phoneRepeater.itemAt(i).clear()
           }
           background: Rectangle {
-            radius: 9
+            radius: height / 2
             color: Theme.accent
           }
         }
@@ -382,7 +405,7 @@ ApplicationWindow {
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
-            radius: 9
+            radius: height / 2
             color: parent.enabled ? Theme.accent : Theme.controlBackground
           }
           onClicked: {
@@ -466,28 +489,9 @@ ApplicationWindow {
     }
   }
 
-  Label {
-    z: 30
-    visible: telegramClient.authorizationState !== "ready"
-    anchors.top: parent.top
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.topMargin: 22
-    text: "Silkite"
-    color: Theme.primaryText
-    font.pixelSize: 36
-    font.bold: true
-  }
-
-  Label {
-    z: 30
-    visible: telegramClient.authorizationState !== "ready"
-    anchors.left: parent.left
-    anchors.bottom: parent.bottom
-    anchors.leftMargin: 18
-    anchors.bottomMargin: 14
-    text: "v" + appController.appVersion
-    color: Theme.secondaryText
-    font.pixelSize: 12
+  Connections {
+    target: telegramClient
+    function onChatUpdated() { window.chatRevision++ }
   }
 
   ComboBox {
@@ -530,45 +534,103 @@ ApplicationWindow {
     }
   }
 
-  RowLayout {
+  Item {
     anchors.fill: parent
-    spacing: 0
 
     Sidebar {
-      Layout.preferredWidth: 68
-      Layout.fillHeight: true
+      id: topBar
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: 48
 
       currentPage: window.activeSection
+      chatListExpanded: window.chatListExpanded
 
       onNavigationRequested: function(page) {
         window.activeSection = page
         console.log("Navigation:", page)
       }
-    }
 
-    ChatList {
-      Layout.preferredWidth: 340
-      Layout.fillHeight: true
-
-      chatModel: chatListModel
-      selectedChatId: window.selectedChatId
-
-      onChatSelected: function(chatId) {
-        window.selectedChatId = chatId
-        telegramClient.loadConversation(chatId)
+      onChatListToggleRequested: {
+        window.chatListExpanded = !window.chatListExpanded
+        window.chatListAutoExpanded = false
       }
     }
 
-    ConversationPanel {
-      Layout.fillWidth: true
-      Layout.fillHeight: true
+    Item {
+      id: contentRow
+      anchors.top: topBar.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+
+      ChatList {
+        id: chatListPane
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        visible: window.chatListExpanded
+        width: window.compactLayout
+          ? (window.chatListExpanded ? 300 : 0)
+          : (window.chatListExpanded ? 340 : 0)
+
+        chatModel: chatListModel
+        selectedChatId: window.selectedChatId
+
+        onPointerInsideChanged: {
+          if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
+            collapseChatListTimer.restart()
+        }
+
+        onChatSelected: function(chatId) {
+          window.selectedChatId = chatId
+          telegramClient.loadConversation(chatId)
+          if (window.compactLayout) {
+            window.chatListExpanded = false
+            window.chatListAutoExpanded = false
+          }
+        }
+      }
+
+      ConversationPanel {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.left: chatListPane.right
 
       chatName: window.selectedChat.name || ""
       chatInitials: window.selectedChat.initials || "?"
       avatarColor: window.selectedChat.avatarColor || "#526C8A"
+      avatarPath: window.selectedChat.avatarPath || ""
       lastMessage: window.selectedChat.lastMessage || ""
       messages: telegramClient.conversationMessages
       appVersion: appController.appVersion
+
+      onStartMessaging: {
+        var firstChat = chatListModel.chatAt(0)
+        if (firstChat.chatId === undefined)
+          return
+        window.chatListExpanded = true
+        window.chatListAutoExpanded = false
+        window.selectedChatId = firstChat.chatId
+        telegramClient.loadConversation(firstChat.chatId)
+      }
+      }
+    }
+
+    MouseArea {
+      z: 40
+      visible: window.compactLayout && !window.chatListExpanded
+      width: 14
+      height: parent.height - topBar.height
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      hoverEnabled: true
+      onEntered: {
+        window.chatListExpanded = true
+        window.chatListAutoExpanded = true
+      }
     }
   }
 }

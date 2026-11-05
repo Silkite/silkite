@@ -35,6 +35,7 @@ signals:
   void chatUpdated(const QVariantMap &chat);
   void chatsReset();
   void messagesLoaded(qint64 chatId, const QVariantList &messages, bool hasMore);
+  void messageReceived(qint64 chatId, const QVariantMap &message);
 
 private:
   enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History };

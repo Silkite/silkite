@@ -23,6 +23,7 @@ TelegramClient::TelegramClient(QObject *parent)
   connect(&m_worker, &TelegramWorker::chatUpdated, this, &TelegramClient::chatUpdated);
   connect(&m_worker, &TelegramWorker::chatsReset, this, &TelegramClient::chatsReset);
   connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64, const QVariantList &messages, bool) { m_conversationMessages = messages; emit conversationMessagesChanged(); });
+  connect(&m_worker, &TelegramWorker::messageReceived, this, [this](qint64 chatId, const QVariantMap &message) { if (chatId != m_activeChatId) return; m_conversationMessages.append(message); emit conversationMessagesChanged(); });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
             if (m_qrCodeLink != link) {
@@ -106,5 +107,5 @@ void TelegramClient::requestQrLogin() { m_worker.submitQrLogin(); }
 void TelegramClient::resendAuthenticationCode() { m_worker.resendAuthenticationCode(); }
 void TelegramClient::selectPhoneLogin() { m_worker.selectPhoneLogin(); }
 void TelegramClient::selectQrLogin() { m_worker.selectQrLogin(); }
-void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_worker.loadConversation(chatId, fromMessageId); }
+void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_activeChatId = chatId; m_conversationMessages.clear(); emit conversationMessagesChanged(); m_worker.loadConversation(chatId, fromMessageId); }
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }

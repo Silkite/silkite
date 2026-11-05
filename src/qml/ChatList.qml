@@ -1,16 +1,22 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 Rectangle {
   id: root
 
   property var chatModel
   property var selectedChatId: 0
+  property bool pointerInside: false
 
   signal chatSelected(var chatId)
 
   color: Theme.panelBackground
+
+  HoverHandler {
+    onHoveredChanged: root.pointerInside = hovered
+  }
 
   ColumnLayout {
     anchors.fill: parent
@@ -28,6 +34,7 @@ Rectangle {
       id: searchField
 
       Layout.fillWidth: true
+      Layout.preferredHeight: 40
       placeholderText: "Search chats..."
       color: Theme.primaryText
       selectByMouse: true
@@ -35,8 +42,10 @@ Rectangle {
       onTextChanged: root.chatModel.filterText = text
 
       background: Rectangle {
-        radius: 9
-        color: Theme.elevatedBackground
+        radius: height / 2
+        color: Qt.rgba(1, 1, 1, 0.08)
+        border.color: Qt.rgba(1, 1, 1, 0.16)
+        border.width: 1
       }
     }
 
@@ -59,6 +68,7 @@ Rectangle {
         required property string time
         required property string initials
         required property string avatarColor
+        required property string avatarPath
         required property int unreadCount
 
         width: chatList.width
@@ -68,7 +78,7 @@ Rectangle {
         background: Rectangle {
           radius: 9
 
-          color: chatDelegate.chatId === root.selectedChatId
+          color: chatDelegate.chatId === root.selectedChatId || chatDelegate.hovered
                  ? Theme.accent
                  : "transparent"
         }
@@ -84,10 +94,36 @@ Rectangle {
             Layout.preferredHeight: 44
             radius: 22
             color: chatDelegate.avatarColor
+            clip: true
+
+            Image {
+              id: avatarImage
+              anchors.fill: parent
+              anchors.margins: 1
+              visible: false
+              source: chatDelegate.avatarPath === "" ? "" : "file://" + chatDelegate.avatarPath
+              fillMode: Image.PreserveAspectCrop
+              asynchronous: true
+              smooth: true
+            }
+
+            OpacityMask {
+              anchors.fill: parent
+              anchors.margins: 1
+              visible: chatDelegate.avatarPath !== ""
+              source: avatarImage
+              maskSource: Rectangle {
+                width: avatarImage.width
+                height: avatarImage.height
+                radius: width / 2
+                color: "white"
+              }
+            }
 
             Label {
               anchors.centerIn: parent
               text: chatDelegate.initials
+              visible: chatDelegate.avatarPath === ""
               color: Theme.primaryText
               font.bold: true
             }

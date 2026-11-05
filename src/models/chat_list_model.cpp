@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QVariantMap>
+#include <algorithm>
 
 ChatListModel::ChatListModel(QObject *parent) : QAbstractListModel(parent) {
   updateFilter();
@@ -42,6 +43,9 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const {
   case AvatarColorRole:
     return chat.avatarColor;
 
+  case AvatarPathRole:
+    return chat.avatarPath;
+
   case UnreadCountRole:
     return chat.unreadCount;
 
@@ -59,6 +63,7 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
   roles[TimeRole] = "time";
   roles[InitialsRole] = "initials";
   roles[AvatarColorRole] = "avatarColor";
+  roles[AvatarPathRole] = "avatarPath";
   roles[UnreadCountRole] = "unreadCount";
 
   return roles;
@@ -111,6 +116,7 @@ QVariantMap ChatListModel::chatAt(int row) const {
           {"time", chat.time},
           {"initials", chat.initials},
           {"avatarColor", chat.avatarColor},
+          {"avatarPath", chat.avatarPath},
           {"unreadCount", chat.unreadCount}};
 }
 
@@ -126,6 +132,7 @@ QVariantMap ChatListModel::chatById(qint64 chatId) const {
   const Chat &c = m_chats.at(i);
   return {{"chatId", c.id}, {"name", c.name}, {"lastMessage", c.lastMessage},
           {"time", c.time}, {"initials", c.initials}, {"avatarColor", c.avatarColor},
+          {"avatarPath", c.avatarPath},
           {"unreadCount", c.unreadCount}};
 }
 
@@ -137,15 +144,18 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   const qint64 id = v.value("chatId").toLongLong();
   if (!id) return;
   const int i = indexOfChat(id);
-  Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", 0} : m_chats.at(i);
+  Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", {}, 0, 0} : m_chats.at(i);
   c.id = id;
   if (v.contains("name")) c.name = v.value("name").toString();
   if (v.contains("lastMessage")) c.lastMessage = v.value("lastMessage").toString();
   if (v.contains("time")) c.time = v.value("time").toString();
   if (v.contains("initials")) c.initials = v.value("initials").toString();
   if (v.contains("avatarColor")) c.avatarColor = v.value("avatarColor").toString();
+  if (v.contains("avatarPath")) c.avatarPath = v.value("avatarPath").toString();
   if (v.contains("unreadCount")) c.unreadCount = v.value("unreadCount").toInt();
+  if (v.contains("order")) c.order = v.value("order").toLongLong();
   if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
   if (i < 0) m_chats.append(c); else m_chats[i] = c;
+  std::sort(m_chats.begin(), m_chats.end(), [](const Chat &a, const Chat &b) { return a.order > b.order; });
   updateFilter();
 }
