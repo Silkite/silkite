@@ -429,7 +429,7 @@ Rectangle {
                 // Downloading / Loading state
                 Column {
                   anchors.centerIn: parent
-                  visible: msgDelegate.isAnimation ? !borderlessGif.visible : !borderlessImage.visible
+                  visible: msgDelegate.isAnimation ? (borderlessGif.status !== AnimatedImage.Ready) : (borderlessImage.status !== Image.Ready)
                   spacing: 6
 
                   Rectangle {
@@ -438,6 +438,7 @@ Rectangle {
                     radius: 22
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Qt.rgba(0, 0, 0, 0.45)
+                    visible: modelData.isDownloading || !modelData.filePath
 
                     BusyIndicator {
                       anchors.centerIn: parent
@@ -449,9 +450,10 @@ Rectangle {
 
                   Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData.isDownloading ? "Downloading..." : (msgDelegate.isVideo ? "Video" : (msgDelegate.isAnimation ? "GIF" : "Photo"))
+                    text: modelData.isDownloading ? "Downloading..." : ""
                     color: "#FFFFFF"
                     font.pixelSize: 12
+                    visible: text.length > 0
                   }
                 }
 
@@ -577,15 +579,6 @@ Rectangle {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (msgDelegate.isAnimation && borderlessGif.visible) {
-                      if (borderlessGif.paused) {
-                        borderlessGif.remainingLoops = 3
-                        borderlessGif.paused = false
-                      } else {
-                        borderlessGif.paused = true
-                      }
-                      return
-                    }
                     if (modelData.filePath && modelData.filePath !== "") {
                       mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
@@ -730,7 +723,7 @@ Rectangle {
                 // Downloading state
                 Column {
                   anchors.centerIn: parent
-                  visible: msgDelegate.isAnimation ? !captionedGif.visible : !captionedImage.visible
+                  visible: msgDelegate.isAnimation ? (captionedGif.status !== AnimatedImage.Ready) : (captionedImage.status !== Image.Ready)
                   spacing: 6
 
                   Rectangle {
@@ -739,6 +732,7 @@ Rectangle {
                     radius: 22
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Qt.rgba(0, 0, 0, 0.45)
+                    visible: modelData.isDownloading || !modelData.filePath
 
                     BusyIndicator {
                       anchors.centerIn: parent
@@ -750,9 +744,10 @@ Rectangle {
 
                   Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData.isDownloading ? "Downloading..." : (msgDelegate.isVideo ? "Video" : (msgDelegate.isAnimation ? "GIF" : "Photo"))
+                    text: modelData.isDownloading ? "Downloading..." : ""
                     color: "#FFFFFF"
                     font.pixelSize: 12
+                    visible: text.length > 0
                   }
                 }
 
@@ -848,15 +843,6 @@ Rectangle {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (msgDelegate.isAnimation && captionedGif.visible) {
-                      if (captionedGif.paused) {
-                        captionedGif.remainingLoops = 3
-                        captionedGif.paused = false
-                      } else {
-                        captionedGif.paused = true
-                      }
-                      return
-                    }
                     if (modelData.filePath && modelData.filePath !== "") {
                       mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
@@ -964,6 +950,22 @@ Rectangle {
               z: -1
               visible: !msgDelegate.isBorderlessMedia
             }
+
+            // Right-click context menu trigger for message bubble
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.RightButton
+              z: 20
+              cursorShape: Qt.ArrowCursor
+              onClicked: function(mouse) {
+                if (mouse.button === Qt.RightButton) {
+                  var bubbleContentText = modelData.caption ? modelData.caption : (modelData.text || "")
+                  messageContextMenu.textToCopy = bubbleContentText
+                  messageContextMenu.mediaPathToCopy = (modelData.filePath && modelData.filePath !== "") ? modelData.filePath : ""
+                  messageContextMenu.popup()
+                }
+              }
+            }
           }
         }
       }
@@ -1069,6 +1071,20 @@ Rectangle {
             }
           }
 
+          Keys.onPressed: function(event) {
+            if ((event.key === Qt.Key_V) && (event.modifiers & Qt.ControlModifier)) {
+              if (appController.clipboardHasImage() || appController.clipboardHasFiles()) {
+                var pastedPath = appController.getClipboardFilePath()
+                if (pastedPath && pastedPath !== "") {
+                  pastePreviewModal.show(pastedPath)
+                  event.accepted = true
+                  return
+                }
+              }
+            }
+            event.accepted = false
+          }
+
           background: Rectangle {
             id: messageInputGlass
             radius: 20
@@ -1111,12 +1127,232 @@ Rectangle {
     onAccepted: {
       var path = fileDialog.selectedFile.toString()
       // Remove file:// prefix if present
-      if (path.indexOf("file://") === 0) {
-        path = path.substring(7)
-      }
       var caption = messageInput.text.trim()
       messageInput.text = ""
       root.sendMediaRequested(path, caption)
+    }
+  }
+
+  // Right-click Message Context Menu
+  Menu {
+    id: messageContextMenu
+
+    property string textToCopy: ""
+    property string mediaPathToCopy: ""
+    property bool canCopyText: textToCopy.trim() !== ""
+    property bool canCopyMedia: mediaPathToCopy !== ""
+
+    background: Rectangle {
+      implicitWidth: 168
+      color: Theme.elevatedBackground
+      radius: 8
+      border.color: Theme.divider
+      border.width: 1
+    }
+
+    MenuItem {
+      text: "Copy Text"
+      visible: messageContextMenu.canCopyText
+      height: visible ? implicitHeight : 0
+      contentItem: Text {
+        text: parent.text
+        color: Theme.primaryText
+        font.pixelSize: 13
+        verticalAlignment: Text.AlignVCenter
+        leftPadding: 12
+        rightPadding: 12
+      }
+      background: Rectangle {
+        color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+        radius: 4
+      }
+      onTriggered: {
+        appController.copyText(messageContextMenu.textToCopy)
+      }
+    }
+
+    MenuItem {
+      text: "Copy Media"
+      visible: messageContextMenu.canCopyMedia
+      height: visible ? implicitHeight : 0
+      contentItem: Text {
+        text: parent.text
+        color: Theme.primaryText
+        font.pixelSize: 13
+        verticalAlignment: Text.AlignVCenter
+        leftPadding: 12
+        rightPadding: 12
+      }
+      background: Rectangle {
+        color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+        radius: 4
+      }
+      onTriggered: {
+        appController.copyImage(messageContextMenu.mediaPathToCopy)
+      }
+    }
+  }
+
+  // Paste Image / Attachment Preview Confirmation Modal
+  Rectangle {
+    id: pastePreviewModal
+    anchors.fill: parent
+    z: 95
+    visible: opacity > 0
+    opacity: 0
+    color: Qt.rgba(0, 0, 0, 0.72)
+
+    Behavior on opacity {
+      NumberAnimation { duration: 160; easing.type: Easing.OutQuad }
+    }
+
+    property string pendingFilePath: ""
+
+    function show(filePath) {
+      pendingFilePath = filePath
+      pasteCaptionInput.text = ""
+      opacity = 1
+      pasteCaptionInput.forceActiveFocus()
+    }
+
+    function hide() {
+      opacity = 0
+      pendingFilePath = ""
+      pasteCaptionInput.text = ""
+      messageInput.forceActiveFocus()
+    }
+
+    function sendPendingMedia() {
+      if (pendingFilePath !== "") {
+        root.sendMediaRequested(pendingFilePath, pasteCaptionInput.text.trim())
+        hide()
+      }
+    }
+
+    // Modal Card
+    Rectangle {
+      anchors.centerIn: parent
+      width: Math.min(parent.width - 48, 420)
+      height: pasteModalCol.implicitHeight + 36
+      radius: 16
+      color: Theme.elevatedBackground
+      border.color: Theme.divider
+      border.width: 1
+
+      ColumnLayout {
+        id: pasteModalCol
+        anchors.fill: parent
+        anchors.margins: 18
+        spacing: 12
+
+        RowLayout {
+          Layout.fillWidth: true
+
+          Label {
+            text: "Send Image"
+            color: Theme.primaryText
+            font.pixelSize: 16
+            font.weight: Font.DemiBold
+            Layout.fillWidth: true
+          }
+
+          ToolButton {
+            text: "✕"
+            font.pixelSize: 14
+            implicitWidth: 28
+            implicitHeight: 28
+            focusPolicy: Qt.NoFocus
+            onClicked: pastePreviewModal.hide()
+            background: Rectangle {
+              radius: 14
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+            }
+          }
+        }
+
+        Rectangle {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 220
+          radius: 10
+          clip: true
+          color: Qt.darker(Theme.controlBackground, 1.2)
+
+          Image {
+            anchors.fill: parent
+            source: pastePreviewModal.pendingFilePath !== "" ? ("file://" + pastePreviewModal.pendingFilePath) : ""
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            smooth: true
+          }
+        }
+
+        TextField {
+          id: pasteCaptionInput
+          Layout.fillWidth: true
+          placeholderText: "Add a caption..."
+          color: Theme.primaryText
+          font.pixelSize: 14
+          background: Rectangle {
+            radius: 8
+            color: Theme.controlBackground
+            border.color: Theme.divider
+            border.width: 1
+          }
+          Keys.onReturnPressed: function(event) {
+            pastePreviewModal.sendPendingMedia()
+            event.accepted = true
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 10
+
+          Item { Layout.fillWidth: true }
+
+          Button {
+            text: "Cancel"
+            implicitHeight: 34
+            onClicked: pastePreviewModal.hide()
+            contentItem: Label {
+              text: parent.text
+              color: Theme.primaryText
+              font.pixelSize: 13
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle {
+              radius: 6
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+            }
+          }
+
+          Button {
+            text: "Send"
+            implicitHeight: 34
+            highlighted: true
+            onClicked: pastePreviewModal.sendPendingMedia()
+            contentItem: Label {
+              text: parent.text
+              color: "#FFFFFF"
+              font.pixelSize: 13
+              font.weight: Font.Medium
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle {
+              radius: 6
+              color: parent.hovered ? Qt.lighter(Theme.accent, 1.1) : Theme.accent
+            }
+          }
+        }
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      z: -1
+      onClicked: pastePreviewModal.hide()
     }
   }
 
@@ -1139,11 +1375,18 @@ Rectangle {
     function show(path, type) {
       mediaPath = path
       mediaType = type
+      if (type === "animation") {
+        viewerGif.remainingLoops = 3
+        viewerGif.currentFrame = 0
+        viewerGif.paused = false
+      }
       opacity = 1
     }
 
     function hide() {
       opacity = 0
+      mediaPath = ""
+      mediaType = ""
     }
 
     // Top action bar
@@ -1170,7 +1413,7 @@ Rectangle {
       }
     }
 
-    // Center Image preview with zoom/pan support
+    // Center Image/GIF preview with zoom/pan support
     Item {
       anchors.fill: parent
       anchors.margins: 40
@@ -1180,10 +1423,44 @@ Rectangle {
         anchors.centerIn: parent
         width: Math.min(parent.width, implicitWidth > 0 ? implicitWidth : parent.width)
         height: Math.min(parent.height, implicitHeight > 0 ? implicitHeight : parent.height)
-        source: (mediaViewer.mediaPath && mediaViewer.mediaPath !== "") ? ("file://" + mediaViewer.mediaPath) : ""
+        source: (mediaViewer.mediaType !== "animation" && mediaViewer.mediaPath && mediaViewer.mediaPath !== "") ? ("file://" + mediaViewer.mediaPath) : ""
         fillMode: Image.PreserveAspectFit
         smooth: true
         asynchronous: true
+        visible: mediaViewer.mediaType !== "animation"
+      }
+
+      AnimatedImage {
+        id: viewerGif
+        anchors.centerIn: parent
+        width: Math.min(parent.width, implicitWidth > 0 ? implicitWidth : parent.width)
+        height: Math.min(parent.height, implicitHeight > 0 ? implicitHeight : parent.height)
+        source: (mediaViewer.mediaType === "animation" && mediaViewer.mediaPath && mediaViewer.mediaPath !== "") ? ("file://" + mediaViewer.mediaPath) : ""
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        asynchronous: true
+        visible: mediaViewer.mediaType === "animation"
+
+        property int remainingLoops: 3
+
+        onFrameChanged: {
+          if (frameCount > 1 && currentFrame === frameCount - 1) {
+            remainingLoops--
+            if (remainingLoops <= 0) {
+              paused = true
+            }
+          }
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            viewerGif.remainingLoops = 3
+            viewerGif.currentFrame = 0
+            viewerGif.paused = false
+          }
+        }
       }
     }
 

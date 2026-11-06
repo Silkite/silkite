@@ -22,6 +22,13 @@ public:
 
   Q_INVOKABLE void simulateIncomingMessage();
 
+  // Clipboard operations
+  Q_INVOKABLE void copyText(const QString &text);
+  Q_INVOKABLE void copyImage(const QString &filePath);
+  Q_INVOKABLE bool clipboardHasImage() const;
+  Q_INVOKABLE bool clipboardHasFiles() const;
+  Q_INVOKABLE QString getClipboardFilePath();
+
 signals:
   void lastMessageChanged();
   void messageReceived(const QString &message);
