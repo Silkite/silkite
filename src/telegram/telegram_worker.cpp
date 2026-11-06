@@ -281,6 +281,59 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
   return map;
 }
 
+QString formatUserStatus(const td::td_api::UserStatus *status, bool isBot, bool *outIsOnline = nullptr) {
+  if (outIsOnline) *outIsOnline = false;
+  if (!status) return {};
+  if (isBot) return QStringLiteral("bot");
+
+  switch (status->get_id()) {
+  case td::td_api::userStatusOnline::ID: {
+    if (outIsOnline) *outIsOnline = true;
+    return QStringLiteral("online");
+  }
+  case td::td_api::userStatusOffline::ID: {
+    auto *offline = static_cast<const td::td_api::userStatusOffline *>(status);
+    const qint64 wasOnlineSecs = offline->was_online_;
+    if (wasOnlineSecs <= 0) return QStringLiteral("offline");
+    const QDateTime wasOnline = QDateTime::fromSecsSinceEpoch(wasOnlineSecs).toLocalTime();
+    const QDateTime now = QDateTime::currentDateTime();
+    const qint64 diffSecs = wasOnline.secsTo(now);
+
+    if (diffSecs < 60) {
+      return QStringLiteral("last seen just now");
+    }
+    if (diffSecs < 3600) {
+      const int mins = int(diffSecs / 60);
+      return QStringLiteral("last seen %1 minute%2 ago").arg(mins).arg(mins > 1 ? QStringLiteral("s") : QString());
+    }
+
+    const QDate wasDate = wasOnline.date();
+    const QDate nowDate = now.date();
+    const QString timeStr = wasOnline.toString(QStringLiteral("HH:mm"));
+
+    if (wasDate == nowDate) {
+      return QStringLiteral("last seen today at %1").arg(timeStr);
+    }
+    if (wasDate == nowDate.addDays(-1)) {
+      return QStringLiteral("last seen yesterday at %1").arg(timeStr);
+    }
+    if (wasDate.year() == nowDate.year()) {
+      return QStringLiteral("last seen %1 at %2").arg(wasOnline.toString(QStringLiteral("MMM d"))).arg(timeStr);
+    }
+    return QStringLiteral("last seen %1 at %2").arg(wasOnline.toString(QStringLiteral("dd.MM.yyyy"))).arg(timeStr);
+  }
+  case td::td_api::userStatusRecently::ID:
+    return QStringLiteral("last seen recently");
+  case td::td_api::userStatusLastWeek::ID:
+    return QStringLiteral("last seen within a week");
+  case td::td_api::userStatusLastMonth::ID:
+    return QStringLiteral("last seen within a month");
+  case td::td_api::userStatusEmpty::ID:
+  default:
+    return QStringLiteral("offline");
+  }
+}
+
 QVariantMap toChatMap(const td::td_api::chat *chat) {
   if (!chat) return {};
   const QString name = QString::fromStdString(chat->title_);
@@ -354,6 +407,18 @@ void TelegramWorker::run() {
   QMultiHash<int, QPair<qint64, qint64>> messageFiles; // fileId -> (chatId, messageId)
   QHash<qint64, qint64> lastReadOutbox;
   QHash<td::ClientManager::RequestId, qint64> historyRequests;
+  struct UserInfo {
+    bool isBot = false;
+    QString statusText;
+    bool isOnline = false;
+  };
+  QHash<qint64, UserInfo> users; // userId -> UserInfo
+  QHash<qint64, qint64> chatUserIds; // chatId -> userId
+  QHash<qint64, qint64> chatBasicGroupIds; // chatId -> basicGroupId
+  QHash<qint64, qint64> chatSupergroupIds; // chatId -> supergroupId
+  QHash<qint64, int> basicGroupMemberCount; // basicGroupId -> member_count
+  QHash<qint64, int> supergroupMemberCount; // supergroupId -> member_count
+  QHash<qint64, bool> supergroupIsChannel; // supergroupId -> is_channel
   bool qrPending = true;
   QString phonePending;
   QString phoneState;
@@ -615,7 +680,50 @@ void TelegramWorker::run() {
       continue;
     }
 
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewChat::ID) { auto *chat = static_cast<td::td_api::updateNewChat *>(response.object.get())->chat_.get(); if (chat) { lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); } continue; }
+    auto inspectChat = [&](const td::td_api::chat *c) {
+      if (!c) return;
+      const qint64 cid = c->id_;
+      if (c->type_) {
+        const auto typeId = c->type_->get_id();
+        if (typeId == td::td_api::chatTypePrivate::ID) {
+          const auto *p = static_cast<const td::td_api::chatTypePrivate *>(c->type_.get());
+          chatUserIds[cid] = p->user_id_;
+          if (!users.contains(p->user_id_)) {
+            send(activeClientId, td::td_api::make_object<td::td_api::getUser>(p->user_id_));
+          } else {
+            emit chatUpdated({{"chatId", cid}, {"statusText", users[p->user_id_].statusText}, {"isOnline", users[p->user_id_].isOnline}});
+          }
+        } else if (typeId == td::td_api::chatTypeSecret::ID) {
+          const auto *s = static_cast<const td::td_api::chatTypeSecret *>(c->type_.get());
+          chatUserIds[cid] = s->user_id_;
+          if (!users.contains(s->user_id_)) {
+            send(activeClientId, td::td_api::make_object<td::td_api::getUser>(s->user_id_));
+          } else {
+            emit chatUpdated({{"chatId", cid}, {"statusText", users[s->user_id_].statusText}, {"isOnline", users[s->user_id_].isOnline}});
+          }
+        } else if (typeId == td::td_api::chatTypeBasicGroup::ID) {
+          const auto *bg = static_cast<const td::td_api::chatTypeBasicGroup *>(c->type_.get());
+          chatBasicGroupIds[cid] = bg->basic_group_id_;
+          if (basicGroupMemberCount.contains(bg->basic_group_id_)) {
+            emit chatUpdated({{"chatId", cid}, {"statusText", QStringLiteral("%1 members").arg(basicGroupMemberCount[bg->basic_group_id_])}, {"isOnline", false}});
+          }
+          send(activeClientId, td::td_api::make_object<td::td_api::getBasicGroup>(bg->basic_group_id_));
+        } else if (typeId == td::td_api::chatTypeSupergroup::ID) {
+          const auto *sg = static_cast<const td::td_api::chatTypeSupergroup *>(c->type_.get());
+          chatSupergroupIds[cid] = sg->supergroup_id_;
+          if (supergroupMemberCount.contains(sg->supergroup_id_)) {
+            const bool isChan = supergroupIsChannel.value(sg->supergroup_id_, false);
+            const QString desc = isChan
+                ? QStringLiteral("%1 subscribers").arg(supergroupMemberCount[sg->supergroup_id_])
+                : QStringLiteral("%1 members").arg(supergroupMemberCount[sg->supergroup_id_]);
+            emit chatUpdated({{"chatId", cid}, {"statusText", desc}, {"isOnline", false}});
+          }
+          send(activeClientId, td::td_api::make_object<td::td_api::getSupergroup>(sg->supergroup_id_));
+        }
+      }
+    };
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewChat::ID) { auto *chat = static_cast<td::td_api::updateNewChat *>(response.object.get())->chat_.get(); if (chat) { lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } inspectChat(chat); emit chatUpdated(toChatMap(chat)); } continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatTitle::ID) { auto *u = static_cast<td::td_api::updateChatTitle *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"name", QString::fromStdString(u->title_)}}); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPhoto::ID) { auto *u = static_cast<td::td_api::updateChatPhoto *>(response.object.get()); if (u->photo_ && u->photo_->small_) { const int fileId = u->photo_->small_->id_; avatarFileChats.insert(fileId, u->chat_id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateUnreadMessageCount::ID) { auto *u = static_cast<td::td_api::updateUnreadMessageCount *>(response.object.get()); Q_UNUSED(u); continue; }
@@ -669,7 +777,7 @@ void TelegramWorker::run() {
       continue;
     }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) { auto *r = static_cast<td::td_api::chats *>(response.object.get()); for (const auto id : r->chat_ids_) send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id)); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_)); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } emit chatUpdated(toChatMap(chat)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_)); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } inspectChat(chat); emit chatUpdated(toChatMap(chat)); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateFile::ID) {
       auto *u = static_cast<td::td_api::updateFile *>(response.object.get());
       if (u->file_ && u->file_->local_ && u->file_->local_->is_downloading_completed_) {
@@ -720,6 +828,165 @@ void TelegramWorker::run() {
             chatId, std::move(ids), td::td_api::make_object<td::td_api::messageSourceChatHistory>(), true));
       }
       emit messagesLoaded(chatId, list, r->messages_.size() >= 50);
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateUser::ID) {
+      auto *u = static_cast<td::td_api::updateUser *>(response.object.get());
+      if (u->user_) {
+        const qint64 uid = u->user_->id_;
+        const bool isBot = u->user_->type_ && u->user_->type_->get_id() == td::td_api::userTypeBot::ID;
+        users[uid].isBot = isBot;
+        if (u->user_->status_) {
+          bool isOnline = false;
+          users[uid].statusText = formatUserStatus(u->user_->status_.get(), isBot, &isOnline);
+          users[uid].isOnline = isOnline;
+        }
+        for (auto it = chatUserIds.begin(); it != chatUserIds.end(); ++it) {
+          if (it.value() == uid) {
+            emit chatUpdated({{"chatId", it.key()}, {"statusText", users[uid].statusText}, {"isOnline", users[uid].isOnline}});
+          }
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::user::ID) {
+      auto *u = static_cast<td::td_api::user *>(response.object.get());
+      const qint64 uid = u->id_;
+      const bool isBot = u->type_ && u->type_->get_id() == td::td_api::userTypeBot::ID;
+      users[uid].isBot = isBot;
+      if (u->status_) {
+        bool isOnline = false;
+        users[uid].statusText = formatUserStatus(u->status_.get(), isBot, &isOnline);
+        users[uid].isOnline = isOnline;
+      }
+      for (auto it = chatUserIds.begin(); it != chatUserIds.end(); ++it) {
+        if (it.value() == uid) {
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", users[uid].statusText}, {"isOnline", users[uid].isOnline}});
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateUserStatus::ID) {
+      auto *u = static_cast<td::td_api::updateUserStatus *>(response.object.get());
+      const qint64 uid = u->user_id_;
+      const bool isBot = users.contains(uid) ? users[uid].isBot : false;
+      if (u->status_) {
+        bool isOnline = false;
+        users[uid].statusText = formatUserStatus(u->status_.get(), isBot, &isOnline);
+        users[uid].isOnline = isOnline;
+      }
+      for (auto it = chatUserIds.begin(); it != chatUserIds.end(); ++it) {
+        if (it.value() == uid) {
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", users[uid].statusText}, {"isOnline", users[uid].isOnline}});
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateBasicGroup::ID) {
+      auto *u = static_cast<td::td_api::updateBasicGroup *>(response.object.get());
+      if (u->basic_group_) {
+        const qint64 bgId = u->basic_group_->id_;
+        const int count = u->basic_group_->member_count_;
+        basicGroupMemberCount[bgId] = count;
+        for (auto it = chatBasicGroupIds.begin(); it != chatBasicGroupIds.end(); ++it) {
+          if (it.value() == bgId) {
+            emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}});
+          }
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::basicGroup::ID) {
+      auto *bg = static_cast<td::td_api::basicGroup *>(response.object.get());
+      const qint64 bgId = bg->id_;
+      const int count = bg->member_count_;
+      basicGroupMemberCount[bgId] = count;
+      for (auto it = chatBasicGroupIds.begin(); it != chatBasicGroupIds.end(); ++it) {
+        if (it.value() == bgId) {
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}});
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateSupergroup::ID) {
+      auto *u = static_cast<td::td_api::updateSupergroup *>(response.object.get());
+      if (u->supergroup_) {
+        const qint64 sgId = u->supergroup_->id_;
+        const int count = u->supergroup_->member_count_;
+        const bool isChan = u->supergroup_->is_channel_;
+        supergroupMemberCount[sgId] = count;
+        supergroupIsChannel[sgId] = isChan;
+        for (auto it = chatSupergroupIds.begin(); it != chatSupergroupIds.end(); ++it) {
+          if (it.value() == sgId) {
+            const QString desc = isChan
+                ? QStringLiteral("%1 subscribers").arg(count)
+                : QStringLiteral("%1 members").arg(count);
+            emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}});
+          }
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::supergroup::ID) {
+      auto *sg = static_cast<td::td_api::supergroup *>(response.object.get());
+      const qint64 sgId = sg->id_;
+      const int count = sg->member_count_;
+      const bool isChan = sg->is_channel_;
+      supergroupMemberCount[sgId] = count;
+      supergroupIsChannel[sgId] = isChan;
+      for (auto it = chatSupergroupIds.begin(); it != chatSupergroupIds.end(); ++it) {
+        if (it.value() == sgId) {
+          const QString desc = isChan
+              ? QStringLiteral("%1 subscribers").arg(count)
+              : QStringLiteral("%1 members").arg(count);
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}});
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateBasicGroupFullInfo::ID) {
+      auto *u = static_cast<td::td_api::updateBasicGroupFullInfo *>(response.object.get());
+      if (u->basic_group_full_info_) {
+        const qint64 bgId = u->basic_group_id_;
+        const int count = static_cast<int>(u->basic_group_full_info_->members_.size());
+        if (count > 0) {
+          basicGroupMemberCount[bgId] = count;
+          for (auto it = chatBasicGroupIds.begin(); it != chatBasicGroupIds.end(); ++it) {
+            if (it.value() == bgId) {
+              emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}});
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateSupergroupFullInfo::ID) {
+      auto *u = static_cast<td::td_api::updateSupergroupFullInfo *>(response.object.get());
+      if (u->supergroup_full_info_) {
+        const qint64 sgId = u->supergroup_id_;
+        const int count = u->supergroup_full_info_->member_count_;
+        if (count > 0) {
+          supergroupMemberCount[sgId] = count;
+          const bool isChan = supergroupIsChannel.value(sgId, false);
+          for (auto it = chatSupergroupIds.begin(); it != chatSupergroupIds.end(); ++it) {
+            if (it.value() == sgId) {
+              const QString desc = isChan
+                  ? QStringLiteral("%1 subscribers").arg(count)
+                  : QStringLiteral("%1 members").arg(count);
+              emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}});
+            }
+          }
+        }
+      }
       continue;
     }
 

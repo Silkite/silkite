@@ -824,6 +824,8 @@ ApplicationWindow {
           avatarColor: window.selectedChat.avatarColor || "#526C8A"
           avatarPath: window.selectedChat.avatarPath || ""
           lastMessage: window.selectedChat.lastMessage || ""
+          statusText: window.selectedChat.statusText || ""
+          isOnline: window.selectedChat.isOnline || false
           messages: telegramClient.conversationMessages
           typing: telegramClient.typing
           appVersion: appController.appVersion

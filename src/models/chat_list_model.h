@@ -14,6 +14,8 @@ struct Chat {
   QString avatarPath;
   int unreadCount;
   qint64 order = 0;
+  QString statusText;
+  bool isOnline = false;
 };
 
 class ChatListModel : public QAbstractListModel {
@@ -30,7 +32,9 @@ public:
     InitialsRole,
     AvatarColorRole,
     UnreadCountRole,
-    AvatarPathRole
+    AvatarPathRole,
+    StatusTextRole,
+    IsOnlineRole
   };
 
   explicit ChatListModel(QObject *parent = nullptr);

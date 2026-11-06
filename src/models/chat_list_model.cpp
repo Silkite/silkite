@@ -49,6 +49,12 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const {
   case UnreadCountRole:
     return chat.unreadCount;
 
+  case StatusTextRole:
+    return chat.statusText;
+
+  case IsOnlineRole:
+    return chat.isOnline;
+
   default:
     return {};
   }
@@ -65,6 +71,8 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
   roles[AvatarColorRole] = "avatarColor";
   roles[AvatarPathRole] = "avatarPath";
   roles[UnreadCountRole] = "unreadCount";
+  roles[StatusTextRole] = "statusText";
+  roles[IsOnlineRole] = "isOnline";
 
   return roles;
 }
@@ -117,7 +125,9 @@ QVariantMap ChatListModel::chatAt(int row) const {
           {"initials", chat.initials},
           {"avatarColor", chat.avatarColor},
           {"avatarPath", chat.avatarPath},
-          {"unreadCount", chat.unreadCount}};
+          {"unreadCount", chat.unreadCount},
+          {"statusText", chat.statusText},
+          {"isOnline", chat.isOnline}};
 }
 
 int ChatListModel::indexOfChat(qint64 chatId) const {
@@ -133,7 +143,9 @@ QVariantMap ChatListModel::chatById(qint64 chatId) const {
   return {{"chatId", c.id}, {"name", c.name}, {"lastMessage", c.lastMessage},
           {"time", c.time}, {"initials", c.initials}, {"avatarColor", c.avatarColor},
           {"avatarPath", c.avatarPath},
-          {"unreadCount", c.unreadCount}};
+          {"unreadCount", c.unreadCount},
+          {"statusText", c.statusText},
+          {"isOnline", c.isOnline}};
 }
 
 void ChatListModel::clearChats() {
@@ -144,7 +156,7 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   const qint64 id = v.value("chatId").toLongLong();
   if (!id) return;
   const int i = indexOfChat(id);
-  Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", {}, 0, 0} : m_chats.at(i);
+  Chat c = i < 0 ? Chat{id, {}, {}, {}, "?", "#526C8A", {}, 0, 0, {}, false} : m_chats.at(i);
   c.id = id;
   if (v.contains("name") && !v.value("name").toString().isEmpty()) c.name = v.value("name").toString();
   if (v.contains("lastMessage")) c.lastMessage = v.value("lastMessage").toString();
@@ -153,6 +165,8 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   if (v.contains("avatarColor")) c.avatarColor = v.value("avatarColor").toString();
   if (v.contains("avatarPath") && !v.value("avatarPath").toString().isEmpty()) c.avatarPath = v.value("avatarPath").toString();
   if (v.contains("unreadCount")) c.unreadCount = v.value("unreadCount").toInt();
+  if (v.contains("statusText")) c.statusText = v.value("statusText").toString();
+  if (v.contains("isOnline")) c.isOnline = v.value("isOnline").toBool();
   if (v.contains("order")) {
     const qint64 order = v.value("order").toLongLong();
     if (order > 0 || c.order == 0) c.order = order;

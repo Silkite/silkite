@@ -12,6 +12,8 @@ Item {
   property string avatarColor: "#526C8A"
   property string avatarPath: ""
   property string lastMessage: ""
+  property string statusText: ""
+  property bool isOnline: false
   property var messages: []
   property bool typing: false
 
@@ -208,8 +210,8 @@ Item {
             }
 
             Label {
-              text: root.typing ? "typing..." : "Telegram conversation"
-              color: root.typing ? Theme.accent : Theme.secondaryText
+              text: root.typing ? "typing..." : (root.statusText !== "" ? root.statusText : "Telegram conversation")
+              color: root.typing ? Theme.accent : (root.isOnline ? Theme.accent : Theme.secondaryText)
               font.pixelSize: 11
             }
           }
