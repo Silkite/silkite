@@ -1,111 +1,209 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
-Rectangle {
+Item {
   id: root
 
   property string currentPage: "chats"
-  property bool chatListExpanded: true
 
   signal navigationRequested(string page)
-  signal chatListToggleRequested()
 
-  color: Theme.elevatedBackground
+  implicitWidth: 64
+  width: implicitWidth
 
-  RowLayout {
+  // Floating elevation shadow
+  DropShadow {
+    anchors.fill: glassBody
+    source: glassBody
+    radius: 16
+    samples: 24
+    color: Qt.rgba(0, 0, 0, 0.40)
+    verticalOffset: 3
+    horizontalOffset: 1
+  }
+
+  // Floating liquid glass background container with rounded borders
+  Rectangle {
+    id: glassBody
     anchors.fill: parent
-    anchors.leftMargin: 12
-    anchors.rightMargin: 12
-    spacing: 8
+    radius: 18
+    color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+    border.color: Theme.divider
+    border.width: 1
 
-    Image {
-      Layout.preferredWidth: 28
-      Layout.preferredHeight: 28
-      source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
-      fillMode: Image.PreserveAspectFit
-      smooth: true
-    }
-
+    // Inner subtle border highlight matching UI aesthetic
     Rectangle {
-      Layout.preferredWidth: 1
-      Layout.fillHeight: true
-      color: Theme.divider
+      anchors.fill: parent
+      anchors.margins: 1
+      radius: 17
+      color: "transparent"
+      border.color: Qt.rgba(1, 1, 1, 0.08)
+      border.width: 1
     }
 
-    ToolButton {
-      icon.source: "qrc:/qt/qml/Silkite/assets/icons/chat.svg"
-      icon.width: 22
-      icon.height: 22
-      focusPolicy: Qt.NoFocus
-      implicitWidth: 40
-      implicitHeight: 40
+    ColumnLayout {
+      id: columnContent
+      anchors.fill: parent
+      anchors.topMargin: 14
+      anchors.bottomMargin: 14
+      spacing: 12
 
-      background: Rectangle {
-        radius: width / 2
-        color: root.currentPage === "chats" || parent.hovered ? Theme.accent : "transparent"
+      // Silkite Logo
+      Image {
+        Layout.alignment: Qt.AlignHCenter
+        Layout.preferredWidth: 28
+        Layout.preferredHeight: 28
+        source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
+        fillMode: Image.PreserveAspectFit
+        smooth: true
       }
-      onClicked: root.navigationRequested("chats")
-    }
-    ToolButton {
-      icon.source: "qrc:/qt/qml/Silkite/assets/icons/people.svg"
-      icon.width: 22
-      icon.height: 22
-      focusPolicy: Qt.NoFocus
-      implicitWidth: 40
-      implicitHeight: 40
-      background: Rectangle {
-        radius: width / 2
-        color: root.currentPage === "contacts" || parent.hovered ? Theme.accent : "transparent"
-      }
-      onClicked: root.navigationRequested("contacts")
-    }
-    ToolButton {
-      icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
-      icon.width: 22
-      icon.height: 22
-      focusPolicy: Qt.NoFocus
-      implicitWidth: 40
-      implicitHeight: 40
-      background: Rectangle {
-        radius: width / 2
-        color: root.currentPage === "calls" || parent.hovered ? Theme.accent : "transparent"
-      }
-      onClicked: root.navigationRequested("calls")
-    }
-    Item {
-      Layout.fillWidth: true
-    }
-    ToolButton {
-      icon.source: "qrc:/qt/qml/Silkite/assets/icons/settings.svg"
-      icon.width: 22
-      icon.height: 22
-      focusPolicy: Qt.NoFocus
-      implicitWidth: 40
-      implicitHeight: 40
-      background: Rectangle {
-        radius: width / 2
-        color: root.currentPage === "settings" || parent.hovered ? Theme.accent : "transparent"
-      }
-      onClicked: root.navigationRequested("settings")
-    }
 
-    ToolButton {
-      icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
-      icon.width: 22
-      icon.height: 22
-      focusPolicy: Qt.NoFocus
-      implicitWidth: 40
-      implicitHeight: 40
-      ToolTip.visible: hovered
-      ToolTip.text: root.chatListExpanded ? "Hide chats" : "Show chats"
-      background: Rectangle {
-        radius: width / 2
-        color: parent.hovered ? Theme.accent : "transparent"
+      // Divider separator
+      Rectangle {
+        Layout.alignment: Qt.AlignHCenter
+        Layout.preferredWidth: 28
+        Layout.preferredHeight: 1
+        color: Theme.divider
       }
-      onClicked: root.chatListToggleRequested()
+
+      // Chats navigation icon
+      ToolButton {
+        Layout.alignment: Qt.AlignHCenter
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/chat.svg"
+        icon.width: 22
+        icon.height: 22
+        icon.color: root.currentPage === "chats" ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Chats"
+        ToolTip.delay: 400
+
+        background: Rectangle {
+          radius: 12
+          color: root.currentPage === "chats" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
+          border.color: root.currentPage === "chats" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, root.currentPage === "chats" ? 0.35 : 0.08)
+            border.width: 1
+            visible: root.currentPage === "chats" || parent.parent.hovered
+          }
+        }
+        onClicked: root.navigationRequested("chats")
+      }
+
+      // Contacts navigation icon
+      ToolButton {
+        Layout.alignment: Qt.AlignHCenter
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/people.svg"
+        icon.width: 22
+        icon.height: 22
+        icon.color: root.currentPage === "contacts" ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Contacts"
+        ToolTip.delay: 400
+
+        background: Rectangle {
+          radius: 12
+          color: root.currentPage === "contacts" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
+          border.color: root.currentPage === "contacts" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, root.currentPage === "contacts" ? 0.35 : 0.08)
+            border.width: 1
+            visible: root.currentPage === "contacts" || parent.parent.hovered
+          }
+        }
+        onClicked: root.navigationRequested("contacts")
+      }
+
+      // Calls navigation icon
+      ToolButton {
+        Layout.alignment: Qt.AlignHCenter
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
+        icon.width: 22
+        icon.height: 22
+        icon.color: root.currentPage === "calls" ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Calls"
+        ToolTip.delay: 400
+
+        background: Rectangle {
+          radius: 12
+          color: root.currentPage === "calls" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
+          border.color: root.currentPage === "calls" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, root.currentPage === "calls" ? 0.35 : 0.08)
+            border.width: 1
+            visible: root.currentPage === "calls" || parent.parent.hovered
+          }
+        }
+        onClicked: root.navigationRequested("calls")
+      }
+
+      // Flexible space between top navigation and bottom settings
+      Item {
+        Layout.fillHeight: true
+      }
+
+      // Settings icon
+      ToolButton {
+        Layout.alignment: Qt.AlignHCenter
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/settings.svg"
+        icon.width: 22
+        icon.height: 22
+        icon.color: root.currentPage === "settings" ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Settings"
+        ToolTip.delay: 400
+
+        background: Rectangle {
+          radius: 12
+          color: root.currentPage === "settings" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
+          border.color: root.currentPage === "settings" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, root.currentPage === "settings" ? 0.35 : 0.08)
+            border.width: 1
+            visible: root.currentPage === "settings" || parent.parent.hovered
+          }
+        }
+        onClicked: root.navigationRequested("settings")
+      }
     }
-
-
   }
 }

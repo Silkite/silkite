@@ -155,13 +155,25 @@ ApplicationWindow {
           }
           contentItem: Label {
             text: parent.text
-            color: Theme.primaryText
+            color: parent.checked ? Theme.accentText : Theme.primaryText
+            font.weight: parent.checked ? Font.DemiBold : Font.Normal
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
             radius: height / 2
             color: parent.checked ? Theme.accent : Theme.controlBackground
+            border.color: parent.checked ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: parent.radius - 1
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, parent.parent.checked ? 0.35 : 0.08)
+              border.width: 1
+            }
           }
         }
         Button {
@@ -174,13 +186,25 @@ ApplicationWindow {
           }
           contentItem: Label {
             text: parent.text
-            color: Theme.primaryText
+            color: parent.checked ? Theme.accentText : Theme.primaryText
+            font.weight: parent.checked ? Font.DemiBold : Font.Normal
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
             radius: height / 2
             color: parent.checked ? Theme.accent : Theme.controlBackground
+            border.color: parent.checked ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: parent.radius - 1
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, parent.parent.checked ? 0.35 : 0.08)
+              border.width: 1
+            }
           }
         }
       }
@@ -204,13 +228,24 @@ ApplicationWindow {
         Rectangle {
           Layout.preferredWidth: 260; Layout.preferredHeight: 260
           Layout.alignment: Qt.AlignHCenter
-          radius: 14
+          radius: 20
           color: Theme.panelBackground
+          border.color: Theme.divider
+          border.width: 1
           clip: true
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 19
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: 1
+          }
 
           Image {
             anchors.fill: parent
-            anchors.margins: 8
+            anchors.margins: 12
             source: telegramClient.qrCodeImagePath === "" ? "" : "file://" + telegramClient.qrCodeImagePath
             fillMode: Image.PreserveAspectFit
             smooth: false
@@ -266,22 +301,32 @@ ApplicationWindow {
               font.pixelSize: 15
             }
             background: Rectangle {
-              radius: 9
+              radius: 12
               color: Theme.controlBackground
-              border.color: countryBox.activeFocus ? Theme.accent : "transparent"
+              border.color: countryBox.activeFocus ? Theme.accent : Theme.divider
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+              }
             }
             delegate: ItemDelegate {
               width: countryBox.width
               text: modelData.flag + "  " + modelData.name + "  " + modelData.code
               contentItem: Label {
                 text: modelData.flag + "  " + modelData.name + "  " + modelData.code
-                color: Theme.primaryText
+                color: highlighted ? Theme.accentText : Theme.primaryText
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
               }
               background: Rectangle {
                 color: highlighted ? Theme.accent : Theme.controlBackground
-                radius: 7
+                radius: 9
               }
             }
             onActivated: {
@@ -310,7 +355,17 @@ ApplicationWindow {
                 background: Rectangle {
                   radius: width / 2
                   color: Theme.controlBackground
-                  border.color: parent.activeFocus ? Theme.accent : "transparent"
+                  border.color: parent.activeFocus ? Theme.accent : Theme.divider
+                  border.width: 1
+
+                  Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: parent.radius - 1
+                    color: "transparent"
+                    border.color: Qt.rgba(1, 1, 1, parent.parent.activeFocus ? 0.3 : 0.08)
+                    border.width: 1
+                  }
                 }
                 onTextChanged: {
                   if (text.length === 1 && index + 1 < phoneRepeater.count)
@@ -333,7 +388,8 @@ ApplicationWindow {
           enabled: window.enteredPhoneNumber().length === window.selectedCountryDigits && telegramClient.authorizationState !== "waitCode"
           contentItem: Label {
             text: parent.text
-            color: Theme.primaryText
+            color: Theme.accentText
+            font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
           }
@@ -350,7 +406,18 @@ ApplicationWindow {
           }
           background: Rectangle {
             radius: height / 2
-            color: Theme.accent
+            color: parent.enabled ? Theme.accent : Theme.controlBackground
+            border.color: parent.enabled ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: parent.radius - 1
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, parent.parent.enabled ? 0.35 : 0.08)
+              border.width: 1
+            }
           }
         }
       }
@@ -382,7 +449,21 @@ ApplicationWindow {
               color: Theme.primaryText; horizontalAlignment: Text.AlignHCenter
               font.pixelSize: 22; maximumLength: 1
               inputMethodHints: Qt.ImhDigitsOnly
-              background: Rectangle { radius: width / 2; color: Theme.controlBackground; border.color: parent.activeFocus ? Theme.accent : "transparent" }
+              background: Rectangle {
+                radius: width / 2
+                color: Theme.controlBackground
+                border.color: parent.activeFocus ? Theme.accent : Theme.divider
+                border.width: 1
+
+                Rectangle {
+                  anchors.fill: parent
+                  anchors.margins: 1
+                  radius: parent.radius - 1
+                  color: "transparent"
+                  border.color: Qt.rgba(1, 1, 1, parent.parent.activeFocus ? 0.3 : 0.08)
+                  border.width: 1
+                }
+              }
               onTextChanged: {
                 if (text.length === 1 && index + 1 < otpRepeater.count) {
                   otpRepeater.itemAt(index + 1).forceActiveFocus()
@@ -406,13 +487,25 @@ ApplicationWindow {
           enabled: window.resendReady && window.resendSeconds === 0 && telegramClient.authorizationState === "waitCode"
           contentItem: Label {
             text: parent.text
-            color: Theme.primaryText
+            color: parent.enabled ? Theme.accentText : Theme.secondaryText
+            font.weight: parent.enabled ? Font.DemiBold : Font.Normal
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
           }
           background: Rectangle {
             radius: height / 2
             color: parent.enabled ? Theme.accent : Theme.controlBackground
+            border.color: parent.enabled ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: parent.radius - 1
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, parent.parent.enabled ? 0.35 : 0.08)
+              border.width: 1
+            }
           }
           onClicked: {
             window.clearOtp()
@@ -438,9 +531,19 @@ ApplicationWindow {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
     background: Rectangle {
-      radius: 14
+      radius: 18
       color: Theme.windowBackground
       border.color: Theme.divider
+      border.width: 1
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: 17
+        color: "transparent"
+        border.color: Qt.rgba(1, 1, 1, 0.08)
+        border.width: 1
+      }
     }
 
     onClosed: {
@@ -521,20 +624,30 @@ ApplicationWindow {
       elide: Text.ElideRight
     }
     background: Rectangle {
-      radius: 9
+      radius: 12
       color: Theme.controlBackground
       border.color: Theme.divider
+      border.width: 1
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: 11
+        color: "transparent"
+        border.color: Qt.rgba(1, 1, 1, 0.08)
+        border.width: 1
+      }
     }
     delegate: ItemDelegate {
       width: globalThemeSelector.width
       text: modelData
       contentItem: Label {
         text: modelData
-        color: Theme.primaryText
+        color: highlighted ? Theme.accentText : Theme.primaryText
         verticalAlignment: Text.AlignVCenter
       }
       background: Rectangle {
-        radius: 7
+        radius: 8
         color: highlighted ? Theme.accent : Theme.controlBackground
       }
     }
@@ -543,112 +656,214 @@ ApplicationWindow {
   Item {
     anchors.fill: parent
 
-    Sidebar {
+    // Top application header bar - fixed across the entire top
+    Rectangle {
       id: topBar
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
       height: 48
+      color: Theme.elevatedBackground
+      border.color: Theme.divider
+      border.width: 1
+      z: 20
 
-      currentPage: window.activeSection
-      chatListExpanded: window.chatListExpanded
-
-      onNavigationRequested: function(page) {
-        window.activeSection = page
-        console.log("Navigation:", page)
+      Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: Theme.divider
       }
 
-      onChatListToggleRequested: {
-        window.chatListExpanded = !window.chatListExpanded
-        window.chatListAutoExpanded = false
+      RowLayout {
+        anchors.fill: parent
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        spacing: 12
+
+        Image {
+          Layout.preferredWidth: 28
+          Layout.preferredHeight: 28
+          source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
+          fillMode: Image.PreserveAspectFit
+          smooth: true
+        }
+
+        Label {
+          text: appController.appName
+          font.bold: true
+          font.pixelSize: 17
+          color: Theme.primaryText
+        }
+
+        Item {
+          Layout.fillWidth: true
+        }
+
+        ToolButton {
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
+          icon.width: 22
+          icon.height: 22
+          icon.color: Theme.primaryText
+          focusPolicy: Qt.NoFocus
+          implicitWidth: 38
+          implicitHeight: 38
+          ToolTip.visible: hovered
+          ToolTip.text: window.chatListExpanded ? "Hide chats" : "Show chats"
+          ToolTip.delay: 400
+          background: Rectangle {
+            radius: 12
+            color: parent.hovered ? Theme.controlBackground : "transparent"
+            border.color: parent.hovered ? Theme.divider : "transparent"
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 11
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, 0.08)
+              border.width: 1
+              visible: parent.parent.hovered
+            }
+          }
+          onClicked: {
+            window.chatListExpanded = !window.chatListExpanded
+            window.chatListAutoExpanded = false
+          }
+        }
       }
     }
 
+    // Main content area below the fixed top bar
     Item {
-      id: contentRow
+      id: contentArea
       anchors.top: topBar.bottom
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
 
-      ChatList {
-        id: chatListPane
+      // Reserved Left Sidebar Container (same height & same border roundness)
+      Item {
+        id: sidebarReservedArea
         anchors.top: parent.top
-        anchors.left: parent.left
         anchors.bottom: parent.bottom
-        visible: window.chatListExpanded
-        width: window.compactLayout
-          ? (window.chatListExpanded ? 300 : 0)
-          : (window.chatListExpanded ? 340 : 0)
+        anchors.left: parent.left
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
+        anchors.leftMargin: 10
+        width: 60
+        z: 10
 
-        chatModel: chatListModel
-        selectedChatId: window.selectedChatId
+        Sidebar {
+          id: floatingSidebar
+          anchors.fill: parent
+          currentPage: window.activeSection
 
-        onPointerInsideChanged: {
-          if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
-            collapseChatListTimer.restart()
-        }
-
-        onChatSelected: function(chatId) {
-          window.selectedChatId = chatId
-          telegramClient.loadConversation(chatId)
-          if (window.compactLayout) {
-            window.chatListExpanded = false
-            window.chatListAutoExpanded = false
+          onNavigationRequested: function(page) {
+            window.activeSection = page
+            console.log("Navigation:", page)
           }
         }
       }
 
-      ConversationPanel {
+      // Reserved ChatList Container (same height & same border roundness)
+      Item {
+        id: chatListReservedArea
         anchors.top: parent.top
-        anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.left: chatListPane.right
+        anchors.left: sidebarReservedArea.right
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
+        anchors.leftMargin: 10
+        visible: window.chatListExpanded
+        width: window.compactLayout
+          ? (window.chatListExpanded ? 300 : 0)
+          : (window.chatListExpanded ? 340 : 0)
+        z: 5
 
-      chatName: window.selectedChat.name || ""
-      chatInitials: window.selectedChat.initials || "?"
-      avatarColor: window.selectedChat.avatarColor || "#526C8A"
-      avatarPath: window.selectedChat.avatarPath || ""
-      lastMessage: window.selectedChat.lastMessage || ""
-      messages: telegramClient.conversationMessages
-      typing: telegramClient.typing
-      appVersion: appController.appVersion
+        ChatList {
+          id: chatListPane
+          anchors.fill: parent
+          chatModel: chatListModel
+          selectedChatId: window.selectedChatId
 
-      onStartMessaging: {
-        var firstChat = chatListModel.chatAt(0)
-        if (firstChat.chatId === undefined)
-          return
-        window.chatListExpanded = true
-        window.chatListAutoExpanded = false
-        window.selectedChatId = firstChat.chatId
-        telegramClient.loadConversation(firstChat.chatId)
-      }
+          onPointerInsideChanged: {
+            if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
+              collapseChatListTimer.restart()
+          }
 
-      onSendMessageRequested: function(text, replyToMessageId, quoteText) {
-        if (window.selectedChatId) {
-          telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
+          onChatSelected: function(chatId) {
+            window.selectedChatId = chatId
+            telegramClient.loadConversation(chatId)
+            if (window.compactLayout) {
+              window.chatListExpanded = false
+              window.chatListAutoExpanded = false
+            }
+          }
         }
       }
 
-      onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
-        if (window.selectedChatId) {
-          telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
+      // Reserved Conversation Panel Container (same height & same border roundness)
+      Item {
+        id: conversationReservedArea
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.left: chatListReservedArea.visible ? chatListReservedArea.right : sidebarReservedArea.right
+        anchors.right: parent.right
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
+        anchors.leftMargin: 10
+        anchors.rightMargin: 10
+
+        ConversationPanel {
+          anchors.fill: parent
+          chatName: window.selectedChat.name || ""
+          chatInitials: window.selectedChat.initials || "?"
+          avatarColor: window.selectedChat.avatarColor || "#526C8A"
+          avatarPath: window.selectedChat.avatarPath || ""
+          lastMessage: window.selectedChat.lastMessage || ""
+          messages: telegramClient.conversationMessages
+          typing: telegramClient.typing
+          appVersion: appController.appVersion
+
+          onStartMessaging: {
+            var firstChat = chatListModel.chatAt(0)
+            if (firstChat.chatId === undefined)
+              return
+            window.chatListExpanded = true
+            window.chatListAutoExpanded = false
+            window.selectedChatId = firstChat.chatId
+            telegramClient.loadConversation(firstChat.chatId)
+          }
+
+          onSendMessageRequested: function(text, replyToMessageId, quoteText) {
+            if (window.selectedChatId) {
+              telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
+            }
+          }
+
+          onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
+            if (window.selectedChatId) {
+              telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
+            }
+          }
         }
       }
-      }
-    }
 
-    MouseArea {
-      z: 40
-      visible: window.compactLayout && !window.chatListExpanded
-      width: 14
-      height: parent.height - topBar.height
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      hoverEnabled: true
-      onEntered: {
-        window.chatListExpanded = true
-        window.chatListAutoExpanded = true
+      MouseArea {
+        z: 40
+        visible: window.compactLayout && !window.chatListExpanded
+        width: 14
+        height: parent.height
+        anchors.left: sidebarReservedArea.right
+        anchors.bottom: parent.bottom
+        hoverEnabled: true
+        onEntered: {
+          window.chatListExpanded = true
+          window.chatListAutoExpanded = true
+        }
       }
     }
   }

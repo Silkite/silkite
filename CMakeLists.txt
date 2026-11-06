@@ -59,6 +59,7 @@ qt_add_qml_module(silkite
     assets/icons/chat.svg
     assets/icons/people.svg
     assets/icons/call.svg
+    assets/icons/video.svg
     assets/icons/settings.svg
     assets/icons/search.svg
     assets/icons/more.svg

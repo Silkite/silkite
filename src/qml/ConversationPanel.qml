@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
 
-Rectangle {
+Item {
   id: root
 
   property string chatName: ""
@@ -92,10 +92,39 @@ Rectangle {
   signal sendMessageRequested(string text, var replyToMessageId, string quoteText)
   signal sendMediaRequested(string filePath, string caption, var replyToMessageId, string quoteText)
 
-  color: Theme.windowBackground
+  // Floating elevation shadow
+  DropShadow {
+    anchors.fill: glassBody
+    source: glassBody
+    radius: 16
+    samples: 24
+    color: Qt.rgba(0, 0, 0, 0.40)
+    verticalOffset: 3
+    horizontalOffset: 1
+  }
+
+  // Liquid glass background container
+  Rectangle {
+    id: glassBody
+    anchors.fill: parent
+    radius: 18
+    color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+    border.color: Theme.divider
+    border.width: 1
+
+    // Inner subtle border highlight
+    Rectangle {
+      anchors.fill: parent
+      anchors.margins: 1
+      radius: 17
+      color: "transparent"
+      border.color: Qt.rgba(1, 1, 1, 0.08)
+      border.width: 1
+    }
+  }
 
   // Conversation header
-  Rectangle {
+  Item {
     id: conversationHeader
     z: 2
     anchors.top: parent.top
@@ -104,138 +133,209 @@ Rectangle {
     height: root.hasConversation ? 72 : 0
     clip: true
 
-    color: "transparent"
-
-    /* ShaderEffectSource {
-      id: headerBackdrop
+    RowLayout {
       anchors.fill: parent
-      sourceItem: messagesArea
-      sourceRect: Qt.rect(0, 0, width, height)
-      live: true
-      hideSource: false
-      visible: false
-    }
+      anchors.leftMargin: 16
+      anchors.rightMargin: 16
+      spacing: 12
 
-    FastBlur {
-      anchors.fill: parent
-      source: headerBackdrop
-      radius: 32
-      opacity: 0.9
-    } */
+      // Contact details pill with transparent background
+      Item {
+        Layout.preferredHeight: 52
+        implicitWidth: contactInfoRow.implicitWidth + 24
 
-    Rectangle {
-      anchors.fill: parent
-      z: -1
-      color: "transparent"
-      border.color: "transparent"
-      border.width: 0
-    }
+        RowLayout {
+          id: contactInfoRow
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.left: parent.left
+          anchors.leftMargin: 8
+          anchors.rightMargin: 16
+          spacing: 12
 
-      RowLayout {
-        anchors.fill: parent
-        anchors.leftMargin: 20
-        anchors.rightMargin: 20
+          Rectangle {
+            Layout.preferredWidth: 38
+            Layout.preferredHeight: 38
+            radius: 19
+            color: root.avatarColor
+            border.color: Qt.rgba(1, 1, 1, 0.2)
+            border.width: 1
+            clip: true
 
-        spacing: 12
+            Image {
+              id: headerAvatarImage
+              anchors.fill: parent
+              anchors.margins: 1
+              visible: false
+              source: root.avatarPath === "" ? "" : "file://" + root.avatarPath
+              fillMode: Image.PreserveAspectCrop
+              asynchronous: true
+              smooth: true
+            }
 
-        Rectangle {
-          Layout.preferredWidth: 42
-          Layout.preferredHeight: 42
+            OpacityMask {
+              anchors.fill: parent
+              anchors.margins: 1
+              visible: root.avatarPath !== ""
+              source: headerAvatarImage
+              maskSource: Rectangle {
+                width: headerAvatarImage.width
+                height: headerAvatarImage.height
+                radius: width / 2
+                color: "white"
+              }
+            }
 
-          radius: 21
-          color: root.avatarColor
-          border.color: root.glassBorder
-          border.width: 1
-          clip: true
-
-          Image {
-            id: headerAvatarImage
-            anchors.fill: parent
-            anchors.margins: 1
-            visible: false
-            source: root.avatarPath === "" ? "" : "file://" + root.avatarPath
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            smooth: true
-          }
-
-          OpacityMask {
-            anchors.fill: parent
-            anchors.margins: 1
-            visible: root.avatarPath !== ""
-            source: headerAvatarImage
-            maskSource: Rectangle {
-              width: headerAvatarImage.width
-              height: headerAvatarImage.height
-              radius: width / 2
-              color: "white"
+            Label {
+              anchors.centerIn: parent
+              text: root.chatInitials
+              visible: root.avatarPath === ""
+              color: "#FFFFFF"
+              font.bold: true
+              font.pixelSize: 14
             }
           }
 
-          Label {
-            anchors.centerIn: parent
+          ColumnLayout {
+            spacing: 2
+            Layout.rightMargin: 12
 
-            text: root.chatInitials
-            visible: root.avatarPath === ""
-            color: Theme.primaryText
-            font.bold: true
-          }
-        }
-        ColumnLayout {
-          spacing: 3
+            Label {
+              text: root.chatName
+              color: Theme.primaryText
+              font.bold: true
+              font.pixelSize: 15
+              elide: Text.ElideRight
+            }
 
-          Label {
-            text: root.chatName
-
-            color: Theme.primaryText
-            font.bold: true
-            font.pixelSize: 15
-          }
-
-          Label {
-            text: "Telegram conversation"
-
-            color: Theme.secondaryText
-            font.pixelSize: 11
-          }
-        }
-
-        Item {
-          Layout.fillWidth: true
-        }
-
-        ToolButton {
-          icon.source: "qrc:/qt/qml/Silkite/assets/icons/search.svg"
-          icon.width: 22
-          icon.height: 22
-          focusPolicy: Qt.NoFocus
-          padding: 8
-          implicitWidth: 40
-          implicitHeight: 40
-          background: Rectangle {
-            radius: width / 2
-            color: parent.hovered ? Theme.accent : root.glassColor
-            border.color: root.glassBorder
-            border.width: 1
-          }
-        }
-
-        ToolButton {
-          icon.source: "qrc:/qt/qml/Silkite/assets/icons/more.svg"
-          icon.width: 22
-          icon.height: 22
-          focusPolicy: Qt.NoFocus
-          padding: 8
-          implicitWidth: 40
-          implicitHeight: 40
-          background: Rectangle {
-            radius: width / 2
-            color: parent.hovered ? Theme.accent : root.glassColor
-            border.color: root.glassBorder
-            border.width: 1
+            Label {
+              text: root.typing ? "typing..." : "Telegram conversation"
+              color: root.typing ? Theme.accent : Theme.secondaryText
+              font.pixelSize: 11
+            }
           }
         }
       }
+
+      Item {
+        Layout.fillWidth: true
+      }
+
+      // Voice call button
+      ToolButton {
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
+        icon.width: 20
+        icon.height: 20
+        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Voice call"
+        background: Rectangle {
+          radius: 12
+          color: parent.hovered ? Theme.accent : "transparent"
+          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.35)
+            border.width: 1
+            visible: parent.parent.hovered
+          }
+        }
+      }
+
+      // Video call button
+      ToolButton {
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/video.svg"
+        icon.width: 20
+        icon.height: 20
+        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Video call"
+        background: Rectangle {
+          radius: 12
+          color: parent.hovered ? Theme.accent : "transparent"
+          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.35)
+            border.width: 1
+            visible: parent.parent.hovered
+          }
+        }
+      }
+
+      // Search button
+      ToolButton {
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/search.svg"
+        icon.width: 20
+        icon.height: 20
+        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "Search"
+        background: Rectangle {
+          radius: 12
+          color: parent.hovered ? Theme.accent : "transparent"
+          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.35)
+            border.width: 1
+            visible: parent.parent.hovered
+          }
+        }
+      }
+
+      // Three-dot more options button
+      ToolButton {
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/more.svg"
+        icon.width: 20
+        icon.height: 20
+        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+        focusPolicy: Qt.NoFocus
+        implicitWidth: 38
+        implicitHeight: 38
+        ToolTip.visible: hovered
+        ToolTip.text: "More options"
+        background: Rectangle {
+          radius: 12
+          color: parent.hovered ? Theme.accent : "transparent"
+          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.35)
+            border.width: 1
+            visible: parent.parent.hovered
+          }
+        }
+      }
+    }
   }
 
   // Messages area fills all space between the header and composer.
@@ -247,12 +347,6 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: messageComposer.top
-
-    Rectangle {
-      anchors.fill: parent
-      z: -1
-      color: Theme.windowBackground
-    }
 
       ListView {
         id: messageListView
@@ -289,11 +383,14 @@ Rectangle {
           readonly property bool hasCaption: Boolean(modelData.caption && modelData.caption.trim().length > 0)
           readonly property bool isBorderlessMedia: isVisualMedia && !hasCaption && !hasReply
 
-          // Target dimensions for photos and videos based on aspect ratio
+          // Target dimensions for photos, videos, and gifs based on aspect ratio
           readonly property real targetMediaWidth: {
             if (!isVisualMedia) return 0
-            var maxW = Math.min(380, parent.width * 0.68)
-            var minW = 220
+            var maxW = isAnimation
+              ? Math.min(240, parent.width * 0.48)
+              : Math.min(380, parent.width * 0.68)
+            var minW = isAnimation ? 140 : 220
+            var baseScale = isAnimation ? 180 : 280
             var w = modelData.mediaWidth || 0
             var h = modelData.mediaHeight || 0
             if (w <= 0 || h <= 0) {
@@ -308,19 +405,19 @@ Rectangle {
             if (w > 0 && h > 0) {
               var ratio = w / h
               if (ratio >= 1.0) {
-                return Math.max(minW, Math.min(maxW, 280 * ratio))
+                return Math.max(minW, Math.min(maxW, baseScale * ratio))
               } else {
-                var targetH = Math.min(340, 280 / ratio)
+                var targetH = Math.min(isAnimation ? 220 : 340, baseScale / ratio)
                 return Math.max(minW, Math.min(maxW, targetH * ratio))
               }
             }
-            return 320
+            return isAnimation ? 200 : 320
           }
 
           readonly property real targetMediaHeight: {
             if (!isVisualMedia) return 0
-            var maxH = 360
-            var minH = 160
+            var maxH = isAnimation ? 220 : 360
+            var minH = isAnimation ? 100 : 160
             var w = modelData.mediaWidth || 0
             var h = modelData.mediaHeight || 0
             if (w <= 0 || h <= 0) {
@@ -336,7 +433,7 @@ Rectangle {
               var ratio = w / h
               return Math.max(minH, Math.min(maxH, targetMediaWidth / ratio))
             }
-            return 220
+            return isAnimation ? 150 : 220
           }
 
           TextMetrics {
@@ -414,23 +511,34 @@ Rectangle {
                   ? 36
                   : (bubbleCol.implicitHeight + (isVisualMedia ? 0 : 14)))
 
-            // Modern capsule corners: 16px radius with subtle corner anchor
-            // Visual borderless media always uses uniform 16px radius on all 4 corners
-            topLeftRadius: 16
-            topRightRadius: 16
-            bottomLeftRadius: isBorderlessMedia ? 16 : (msgDelegate.isOutgoing ? 16 : 4)
-            bottomRightRadius: isBorderlessMedia ? 16 : (msgDelegate.isOutgoing ? 4 : 16)
+            // Modern capsule corners: 18px radius with subtle corner anchor
+            // Visual borderless media always uses uniform 18px radius on all 4 corners
+            topLeftRadius: 18
+            topRightRadius: 18
+            bottomLeftRadius: isBorderlessMedia ? 18 : (msgDelegate.isOutgoing ? 18 : 6)
+            bottomRightRadius: isBorderlessMedia ? 18 : (msgDelegate.isOutgoing ? 6 : 18)
 
             color: isBorderlessMedia
               ? "transparent"
               : (msgDelegate.isOutgoing
-                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.88)
+                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.92)
                   : Theme.elevatedBackground)
             border.width: isBorderlessMedia ? 0 : 1
-            border.color: msgDelegate.isOutgoing ? Qt.lighter(Theme.accent, 1.18) : Theme.divider
+            border.color: msgDelegate.isOutgoing ? Qt.rgba(1, 1, 1, 0.28) : Theme.divider
             clip: isBorderlessMedia
 
-            layer.enabled: !isBorderlessMedia
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              topLeftRadius: 17
+              topRightRadius: 17
+              bottomLeftRadius: msgDelegate.isBorderlessMedia ? 17 : (msgDelegate.isOutgoing ? 17 : 5)
+              bottomRightRadius: msgDelegate.isBorderlessMedia ? 17 : (msgDelegate.isOutgoing ? 5 : 17)
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, msgDelegate.isOutgoing ? 0.35 : 0.08)
+              border.width: 1
+              visible: !msgDelegate.isBorderlessMedia
+            }
 
             // === 1-Line Compact Capsule Mode (Telegram/WhatsApp style) ===
             Item {
@@ -446,7 +554,7 @@ Rectangle {
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: modelData.text || ""
-                color: Theme.primaryText
+                color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                 font.pixelSize: 15
                 elide: Text.ElideNone
               }
@@ -459,13 +567,13 @@ Rectangle {
 
                 Label {
                   text: modelData.time || ""
-                  color: Theme.secondaryText
+                  color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
-                  color: Theme.primaryText
+                  color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
                 }
@@ -533,6 +641,16 @@ Rectangle {
                   source: msgDelegate.isAnimation ? borderlessGif : borderlessImage
                   maskSource: borderlessMask
                   visible: msgDelegate.isAnimation ? (borderlessGif.status === AnimatedImage.Ready) : (borderlessImage.status === Image.Ready)
+                }
+
+                // Thin delicate border around borderless media
+                Rectangle {
+                  anchors.fill: parent
+                  radius: 16
+                  color: "transparent"
+                  border.color: Qt.rgba(1, 1, 1, 0.18)
+                  border.width: 1
+                  z: 5
                 }
 
                 // Downloading / Loading state
@@ -829,6 +947,19 @@ Rectangle {
                   visible: msgDelegate.isAnimation ? (captionedGif.status === AnimatedImage.Ready) : (captionedImage.status === Image.Ready)
                 }
 
+                // Thin delicate border around captioned media preview
+                Rectangle {
+                  anchors.fill: parent
+                  topLeftRadius: 16
+                  topRightRadius: 16
+                  bottomLeftRadius: 0
+                  bottomRightRadius: 0
+                  color: "transparent"
+                  border.color: Qt.rgba(1, 1, 1, 0.16)
+                  border.width: 1
+                  z: 5
+                }
+
                 // Downloading state
                 Column {
                   anchors.centerIn: parent
@@ -1012,6 +1143,16 @@ Rectangle {
                     }
                   }
                 }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    if (modelData.filePath && modelData.filePath !== "") {
+                      Qt.openUrlExternally("file://" + modelData.filePath)
+                    }
+                  }
+                }
               }
 
               // Text / Caption Label
@@ -1021,7 +1162,7 @@ Rectangle {
                 anchors.horizontalCenter: msgDelegate.isVisualMedia ? parent.horizontalCenter : undefined
                 visible: text.length > 0 && !(msgDelegate.isPhoto && text === "Photo") && !(msgDelegate.isDoc && text === "Document")
                 text: modelData.caption ? modelData.caption : (modelData.text || "")
-                color: Theme.primaryText
+                color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                 wrapMode: Text.WordWrap
                 font.pixelSize: 15
                 lineHeight: 1.15
@@ -1036,13 +1177,13 @@ Rectangle {
                 Label {
                   id: metaTimeLabel
                   text: modelData.time || ""
-                  color: Theme.secondaryText
+                  color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
-                  color: Theme.primaryText
+                  color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
                 }
@@ -1077,8 +1218,16 @@ Rectangle {
                 if (mouse.button === Qt.RightButton) {
                   messageContextMenu.popup()
                 } else if (mouse.button === Qt.LeftButton) {
-                  // Left-click on message bubble also presents options to reply or act
-                  messageContextMenu.popup()
+                  if (msgDelegate.hasMedia && modelData.filePath && modelData.filePath !== "") {
+                    if (msgDelegate.isDoc) {
+                      Qt.openUrlExternally("file://" + modelData.filePath)
+                    } else if (msgDelegate.isVisualMedia) {
+                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                    }
+                  } else {
+                    // Left-click on text message bubble presents options to reply or act
+                    messageContextMenu.popup()
+                  }
                 }
               }
             }
@@ -1091,17 +1240,6 @@ Rectangle {
         visible: root.hasConversation && root.messages.length === 0
         text: "Your conversation will appear here."
         color: Theme.secondaryText
-      }
-
-      Label {
-        anchors.left: parent.left
-        anchors.bottom: parent.bottom
-        anchors.leftMargin: 18
-        anchors.bottomMargin: 10
-        visible: root.typing
-        text: "Typing..."
-        color: Theme.secondaryText
-        font.pixelSize: 13
       }
 
   }
@@ -1135,17 +1273,81 @@ Rectangle {
       anchors.bottomMargin: 10
       spacing: 6
 
+      // Animated typing indicator positioned directly below messages and right above the input
+      RowLayout {
+        id: typingIndicatorRow
+        Layout.fillWidth: true
+        Layout.leftMargin: 6
+        Layout.bottomMargin: 2
+        spacing: 6
+        visible: root.typing
+        opacity: root.typing ? 1.0 : 0.0
+
+        Behavior on opacity {
+          NumberAnimation { duration: 180; easing.type: Easing.InOutQuad }
+        }
+
+        Label {
+          text: (root.chatName !== "" ? root.chatName : "Contact") + " is typing"
+          color: Theme.accent
+          font.pixelSize: 12
+          font.weight: Font.DemiBold
+        }
+
+        Row {
+          spacing: 3
+          Layout.alignment: Qt.AlignVCenter
+
+          Repeater {
+            model: 3
+            delegate: Rectangle {
+              width: 4
+              height: 4
+              radius: 2
+              color: Theme.accent
+
+              SequentialAnimation on opacity {
+                loops: Animation.Infinite
+                running: root.typing
+                PauseAnimation { duration: index * 200 }
+                NumberAnimation { from: 0.25; to: 1.0; duration: 300; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 1.0; to: 0.25; duration: 300; easing.type: Easing.InOutQuad }
+                PauseAnimation { duration: (2 - index) * 200 + 200 }
+              }
+
+              SequentialAnimation on y {
+                loops: Animation.Infinite
+                running: root.typing
+                PauseAnimation { duration: index * 200 }
+                NumberAnimation { from: 0; to: -3; duration: 300; easing.type: Easing.OutQuad }
+                NumberAnimation { from: -3; to: 0; duration: 300; easing.type: Easing.InQuad }
+                PauseAnimation { duration: (2 - index) * 200 + 200 }
+              }
+            }
+          }
+        }
+      }
+
       // Reply preview banner shown directly above the input box
       Rectangle {
         id: composerReplyBanner
         Layout.fillWidth: true
         implicitHeight: root.activeReply ? 42 : 0
         visible: root.activeReply !== null
-        radius: 8
-        color: Qt.darker(Theme.elevatedBackground, 1.15)
+        radius: 12
+        color: Theme.controlBackground
         border.color: Theme.divider
         border.width: 1
         clip: true
+
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: 11
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
+          border.width: 1
+        }
 
         RowLayout {
           anchors.fill: parent
@@ -1201,24 +1403,39 @@ Rectangle {
 
         ToolButton {
           text: "+"
-          font.pixelSize: 25
+          font.pixelSize: 22
           focusPolicy: Qt.NoFocus
-          padding: 8
-          implicitWidth: 40
-          implicitHeight: 40
+          implicitWidth: 42
+          implicitHeight: 42
           onClicked: fileDialog.open()
+          contentItem: Label {
+            text: parent.text
+            color: parent.hovered ? Theme.accentText : Theme.primaryText
+            font.pixelSize: 24
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+          }
           background: Rectangle {
-            radius: width / 2
-            color: parent.hovered ? Theme.accent : root.glassColor
-            border.color: root.glassBorder
+            radius: 14
+            color: parent.hovered ? Theme.accent : Theme.controlBackground
+            border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
             border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 13
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, parent.parent.hovered ? 0.35 : 0.08)
+              border.width: 1
+            }
           }
         }
 
         TextArea {
           id: messageInput
           Layout.fillWidth: true
-          Layout.preferredHeight: Math.max(40, Math.min(140, implicitHeight))
+          Layout.preferredHeight: Math.max(42, Math.min(140, implicitHeight))
           Layout.maximumHeight: 140
 
           placeholderText: "Write a message..."
@@ -1227,8 +1444,8 @@ Rectangle {
           selectByMouse: true
           leftPadding: 18
           rightPadding: 16
-          topPadding: 10
-          bottomPadding: 10
+          topPadding: 11
+          bottomPadding: 11
           Keys.onReturnPressed: function(event) {
             if (event.modifiers & Qt.ShiftModifier) {
               event.accepted = false
@@ -1265,12 +1482,19 @@ Rectangle {
 
           background: Rectangle {
             id: messageInputGlass
-            radius: 20
+            radius: 16
             color: Theme.controlBackground
-            border.color: Theme.divider
+            border.color: messageInput.activeFocus ? Theme.accent : Theme.divider
             border.width: 1
 
-            layer.enabled: true
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 15
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, messageInput.activeFocus ? 0.28 : 0.08)
+              border.width: 1
+            }
           }
         }
 
@@ -1278,10 +1502,10 @@ Rectangle {
           icon.source: "qrc:/qt/qml/Silkite/assets/icons/send.svg"
           icon.width: 22
           icon.height: 22
+          icon.color: Theme.accentText
           focusPolicy: Qt.NoFocus
-          padding: 8
-          implicitWidth: 40
-          implicitHeight: 40
+          implicitWidth: 42
+          implicitHeight: 42
           onClicked: {
             if (messageInput.text.trim() !== "") {
               var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
@@ -1292,10 +1516,19 @@ Rectangle {
             }
           }
           background: Rectangle {
-            radius: width / 2
-            color: parent.hovered ? Theme.accent : root.glassColor
-            border.color: root.glassBorder
+            radius: 14
+            color: Theme.accent
+            border.color: Qt.rgba(1, 1, 1, 0.25)
             border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 13
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, 0.35)
+              border.width: 1
+            }
           }
         }
       }
