@@ -8,6 +8,7 @@
 #include <QSysInfo>
 #include <QDateTime>
 #include <QHash>
+#include <QImageReader>
 
 #include <cstdlib>
 #include <string>
@@ -123,6 +124,24 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
   map["time"] = QDateTime::fromSecsSinceEpoch(message->date_).toLocalTime().toString("HH:mm");
   map["outgoing"] = message->is_outgoing_;
   map["replyText"] = replyPreview(message);
+  map["replySender"] = QString();
+  map["replyToMessageId"] = qint64(0);
+  if (message->reply_to_ && message->reply_to_->get_id() == td::td_api::messageReplyToMessage::ID) {
+    auto *r = static_cast<const td::td_api::messageReplyToMessage *>(message->reply_to_.get());
+    map["replyToMessageId"] = qint64(r->message_id_);
+    if (r->origin_) {
+      const auto originId = r->origin_->get_id();
+      if (originId == td::td_api::messageOriginHiddenUser::ID) {
+        map["replySender"] = QString::fromStdString(static_cast<const td::td_api::messageOriginHiddenUser *>(r->origin_.get())->sender_name_);
+      } else if (originId == td::td_api::messageOriginChat::ID) {
+        const auto &sig = static_cast<const td::td_api::messageOriginChat *>(r->origin_.get())->author_signature_;
+        if (!sig.empty()) map["replySender"] = QString::fromStdString(sig);
+      } else if (originId == td::td_api::messageOriginChannel::ID) {
+        const auto &sig = static_cast<const td::td_api::messageOriginChannel *>(r->origin_.get())->author_signature_;
+        if (!sig.empty()) map["replySender"] = QString::fromStdString(sig);
+      }
+    }
+  }
   map["mediaType"] = QStringLiteral("none");
   map["filePath"] = QString();
   map["fileName"] = QString();
@@ -156,6 +175,13 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
           const QString localPath = size->photo_->local_ ? QString::fromStdString(size->photo_->local_->path_) : QString();
           if (!localPath.isEmpty() && (size->photo_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
             map["filePath"] = localPath;
+            if (map["mediaWidth"].toInt() == 0 || map["mediaHeight"].toInt() == 0) {
+              const QSize actualSize = QImageReader(localPath).size();
+              if (actualSize.isValid() && actualSize.width() > 0 && actualSize.height() > 0) {
+                map["mediaWidth"] = actualSize.width();
+                map["mediaHeight"] = actualSize.height();
+              }
+            }
           } else {
             fileIdToDownload = fid;
             map["isDownloading"] = true;
@@ -296,11 +322,11 @@ void TelegramWorker::selectQrLogin() { enqueue({CommandType::SelectQr, {}, 0, 0}
 void TelegramWorker::loadConversation(qint64 chatId, qint64 fromMessageId, int limit) {
   enqueue({CommandType::History, QString::number(fromMessageId) + ":" + QString::number(limit), chatId, 0});
 }
-void TelegramWorker::sendMessage(qint64 chatId, const QString &text) {
-  enqueue({CommandType::SendMessage, text, chatId, 0, {}});
+void TelegramWorker::sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId, const QString &quoteText) {
+  enqueue({CommandType::SendMessage, text, chatId, replyToMessageId, {}, quoteText});
 }
-void TelegramWorker::sendMedia(qint64 chatId, const QString &filePath, const QString &caption) {
-  enqueue({CommandType::SendMedia, filePath, chatId, 0, caption});
+void TelegramWorker::sendMedia(qint64 chatId, const QString &filePath, const QString &caption, qint64 replyToMessageId, const QString &quoteText) {
+  enqueue({CommandType::SendMedia, filePath, chatId, replyToMessageId, caption, quoteText});
 }
 void TelegramWorker::viewMessage(qint64 chatId, qint64 messageId) {
   enqueue({CommandType::ViewMessage, {}, chatId, messageId, {}});
@@ -381,10 +407,23 @@ void TelegramWorker::run() {
           auto textObj = td::td_api::make_object<td::td_api::formattedText>();
           textObj->text_ = command.value.toStdString();
           auto contentObj = td::td_api::make_object<td::td_api::inputMessageText>(std::move(textObj), nullptr, true);
+
+          td::td_api::object_ptr<td::td_api::InputMessageReplyTo> replyObj;
+          if (command.messageId != 0) {
+            td::td_api::object_ptr<td::td_api::inputTextQuote> quoteObj;
+            if (!command.quote.isEmpty()) {
+              auto qText = td::td_api::make_object<td::td_api::formattedText>();
+              qText->text_ = command.quote.toStdString();
+              quoteObj = td::td_api::make_object<td::td_api::inputTextQuote>();
+              quoteObj->text_ = std::move(qText);
+            }
+            replyObj = td::td_api::make_object<td::td_api::inputMessageReplyToMessage>(command.messageId, std::move(quoteObj), 0, std::string{});
+          }
+
           send(activeClientId, td::td_api::make_object<td::td_api::sendMessage>(
               command.chatId,
               nullptr,
-              nullptr,
+              std::move(replyObj),
               nullptr,
               nullptr,
               std::move(contentObj)
@@ -401,13 +440,17 @@ void TelegramWorker::run() {
           td::td_api::object_ptr<td::td_api::InputMessageContent> contentObj;
 
           if (isImage) {
+            const QSize imgSize = QImageReader(path).size();
+            const int imgW = (imgSize.isValid() && imgSize.width() > 0) ? imgSize.width() : 0;
+            const int imgH = (imgSize.isValid() && imgSize.height() > 0) ? imgSize.height() : 0;
+
             auto inputPhotoObj = td::td_api::make_object<td::td_api::inputPhoto>(
                 td::td_api::make_object<td::td_api::inputFileLocal>(path.toStdString()),
                 nullptr,
                 nullptr,
                 std::vector<td::td_api::int32>{},
-                0,
-                0
+                imgW,
+                imgH
             );
             contentObj = td::td_api::make_object<td::td_api::inputMessagePhoto>(
                 std::move(inputPhotoObj),
@@ -428,10 +471,22 @@ void TelegramWorker::run() {
             );
           }
 
+          td::td_api::object_ptr<td::td_api::InputMessageReplyTo> replyObj;
+          if (command.messageId != 0) {
+            td::td_api::object_ptr<td::td_api::inputTextQuote> quoteObj;
+            if (!command.quote.isEmpty()) {
+              auto qText = td::td_api::make_object<td::td_api::formattedText>();
+              qText->text_ = command.quote.toStdString();
+              quoteObj = td::td_api::make_object<td::td_api::inputTextQuote>();
+              quoteObj->text_ = std::move(qText);
+            }
+            replyObj = td::td_api::make_object<td::td_api::inputMessageReplyToMessage>(command.messageId, std::move(quoteObj), 0, std::string{});
+          }
+
           send(activeClientId, td::td_api::make_object<td::td_api::sendMessage>(
               command.chatId,
               nullptr,
-              nullptr,
+              std::move(replyObj),
               nullptr,
               nullptr,
               std::move(contentObj)

@@ -29,9 +29,68 @@ Rectangle {
   property color glassColor: Qt.rgba(1, 1, 1, 0.08)
   property color glassBorder: Qt.rgba(1, 1, 1, 0.16)
 
+  // Active reply target state
+  property var activeReply: null // { messageId, sender, text }
+
+  function setReplyTarget(msgId, senderName, previewText) {
+    activeReply = {
+      messageId: msgId,
+      sender: senderName,
+      text: previewText
+    }
+    messageInput.forceActiveFocus()
+  }
+
+  function clearReplyTarget() {
+    activeReply = null
+  }
+
+  function replyTargetName(msgData, isOutgoing) {
+    if (!msgData) return ""
+    var sender = msgData.replySender
+    if (sender && sender !== "" && sender !== "Reply") {
+      return sender
+    }
+    var replyId = msgData.replyToMessageId
+    if (replyId && root.messages) {
+      for (var i = 0; i < root.messages.length; ++i) {
+        var m = root.messages[i]
+        if (m.messageId === replyId) {
+          return m.outgoing ? "You" : root.chatName
+        }
+      }
+    }
+    return isOutgoing ? (root.chatName || "You") : "You"
+  }
+
+  function replyPreviewText(msgData) {
+    if (!msgData) return ""
+    if (msgData.replyText && msgData.replyText !== "") {
+      return msgData.replyText
+    }
+    var replyId = msgData.replyToMessageId
+    if (replyId && root.messages) {
+      for (var i = 0; i < root.messages.length; ++i) {
+        var m = root.messages[i]
+        if (m.messageId === replyId) {
+          if (m.caption && m.caption.trim() !== "") return m.caption
+          if (m.text && m.text.trim() !== "") return m.text
+          if (m.mediaType && m.mediaType !== "none") {
+            if (m.mediaType === "photo") return "Photo"
+            if (m.mediaType === "video") return "Video"
+            if (m.mediaType === "animation") return "GIF"
+            if (m.mediaType === "audio") return "Audio"
+            if (m.mediaType === "document") return m.fileName || "Document"
+          }
+        }
+      }
+    }
+    return ""
+  }
+
   signal startMessaging()
-  signal sendMessageRequested(string text)
-  signal sendMediaRequested(string filePath, string caption)
+  signal sendMessageRequested(string text, var replyToMessageId, string quoteText)
+  signal sendMediaRequested(string filePath, string caption, var replyToMessageId, string quoteText)
 
   color: Theme.windowBackground
 
@@ -220,7 +279,7 @@ Rectangle {
           height: bubble.height + 4
 
           readonly property bool isOutgoing: Boolean(modelData.outgoing)
-          readonly property bool hasReply: modelData.replyText !== undefined && modelData.replyText !== ""
+          readonly property bool hasReply: (modelData.replyToMessageId && modelData.replyToMessageId > 0) || (modelData.replyText !== undefined && modelData.replyText !== "")
           readonly property bool hasMedia: modelData.mediaType !== undefined && modelData.mediaType !== "none" && modelData.mediaType !== ""
           readonly property bool isVisualMedia: modelData.mediaType === "photo" || modelData.mediaType === "video" || modelData.mediaType === "animation"
           readonly property bool isPhoto: modelData.mediaType === "photo"
@@ -233,30 +292,56 @@ Rectangle {
           // Target dimensions for photos and videos based on aspect ratio
           readonly property real targetMediaWidth: {
             if (!isVisualMedia) return 0
-            var maxW = Math.min(360, parent.width * 0.68)
-            var minW = 200
-            if (modelData.mediaWidth > 0 && modelData.mediaHeight > 0) {
-              var ratio = modelData.mediaWidth / modelData.mediaHeight
-              var computedW = 260 * ratio
-              return Math.max(minW, Math.min(maxW, computedW))
+            var maxW = Math.min(380, parent.width * 0.68)
+            var minW = 220
+            var w = modelData.mediaWidth || 0
+            var h = modelData.mediaHeight || 0
+            if (w <= 0 || h <= 0) {
+              if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
+                w = borderlessImage.implicitWidth
+                h = borderlessImage.implicitHeight
+              } else if (captionedImage.implicitWidth > 0 && captionedImage.implicitHeight > 0) {
+                w = captionedImage.implicitWidth
+                h = captionedImage.implicitHeight
+              }
             }
-            return 280
+            if (w > 0 && h > 0) {
+              var ratio = w / h
+              if (ratio >= 1.0) {
+                return Math.max(minW, Math.min(maxW, 280 * ratio))
+              } else {
+                var targetH = Math.min(340, 280 / ratio)
+                return Math.max(minW, Math.min(maxW, targetH * ratio))
+              }
+            }
+            return 320
           }
 
           readonly property real targetMediaHeight: {
             if (!isVisualMedia) return 0
-            var maxH = 340
+            var maxH = 360
             var minH = 160
-            if (modelData.mediaWidth > 0 && modelData.mediaHeight > 0) {
-              var ratio = modelData.mediaWidth / modelData.mediaHeight
+            var w = modelData.mediaWidth || 0
+            var h = modelData.mediaHeight || 0
+            if (w <= 0 || h <= 0) {
+              if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
+                w = borderlessImage.implicitWidth
+                h = borderlessImage.implicitHeight
+              } else if (captionedImage.implicitWidth > 0 && captionedImage.implicitHeight > 0) {
+                w = captionedImage.implicitWidth
+                h = captionedImage.implicitHeight
+              }
+            }
+            if (w > 0 && h > 0) {
+              var ratio = w / h
               return Math.max(minH, Math.min(maxH, targetMediaWidth / ratio))
             }
-            return 210
+            return 220
           }
 
           TextMetrics {
             id: bubbleMetrics
-            text: modelData.text || ""
+            text: modelData.caption ? modelData.caption : (modelData.text || "")
             font: bubbleText.font
           }
 
@@ -267,20 +352,46 @@ Rectangle {
           }
 
           TextMetrics {
-            id: replyMetrics
-            text: hasReply ? (modelData.replySender ? (modelData.replySender + ": " + modelData.replyText) : modelData.replyText) : ""
+            id: replyContentMetrics
+            text: hasReply ? root.replyPreviewText(modelData) : ""
             font: replyContentText.font
+          }
+
+          TextMetrics {
+            id: replySenderMetrics
+            text: hasReply ? root.replyTargetName(modelData, msgDelegate.isOutgoing) : ""
+            font: replySenderLabel.font
           }
 
           // Desktop capped maximum bubble width (Telegram/iMessage style: ~440px or 68% of screen)
           readonly property real maxBubbleWidth: Math.min(460, parent.width * 0.68)
 
-          // Minimum pill width: replies require at least 210px to ensure preview text isn't cramped/truncated
-          readonly property real minBubbleWidth: isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 210 : (msgDelegate.isOutgoing ? 175 : 160)))
-
           // Natural inline content width calculation
           readonly property real inlineNeededWidth: bubbleMetrics.width + metaMetrics.width + 42
-          readonly property real replyNeededWidth: hasReply ? (replyMetrics.width + 44) : 0
+          readonly property real replyNeededWidth: hasReply ? (Math.max(replyContentMetrics.width, replySenderMetrics.width) + 38) : 0
+          readonly property real textNeededWidth: bubbleMetrics.width + 36
+
+          // The component size takes whichever component is bigger:
+          // 1) visual media width (if message has image/video/gif)
+          // 2) replied target length (if message has a reply)
+          // 3) message text / caption length (+ metadata timestamps)
+          readonly property real naturalContentWidth: {
+            var w = Math.max(inlineNeededWidth, textNeededWidth)
+            if (hasReply) {
+              w = Math.max(w, replyNeededWidth)
+            }
+            if (isVisualMedia) {
+              w = Math.max(w, targetMediaWidth)
+            }
+            if (isDoc) {
+              w = Math.max(w, 260)
+            }
+            return w
+          }
+
+          // Minimum pill width: base baseline width so compact bubbles don't collapse
+          readonly property real minBubbleWidth: isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 200 : (msgDelegate.isOutgoing ? 175 : 160)))
+
           readonly property bool fitsSingleLine: !hasMedia && !hasReply && (inlineNeededWidth <= maxBubbleWidth)
 
           Rectangle {
@@ -291,12 +402,10 @@ Rectangle {
             anchors.rightMargin: msgDelegate.isOutgoing ? 18 : 0
             anchors.leftMargin: msgDelegate.isOutgoing ? 0 : 18
 
-            // Width
+            // Width: length is set to the bigger size of the components (reply target, message text, or media)
             width: isBorderlessMedia
               ? targetMediaWidth
-              : (fitsSingleLine
-                  ? Math.max(minBubbleWidth, inlineNeededWidth)
-                  : Math.min(maxBubbleWidth, Math.max(minBubbleWidth, Math.max(replyNeededWidth, isVisualMedia ? targetMediaWidth : (bubbleMetrics.width + 32)))))
+              : Math.min(maxBubbleWidth, Math.max(minBubbleWidth, naturalContentWidth))
 
             // Height
             height: isBorderlessMedia
@@ -634,7 +743,7 @@ Rectangle {
                     id: replySenderLabel
                     width: parent.width
                     visible: text.length > 0
-                    text: modelData.replySender || (msgDelegate.isOutgoing ? "Reply" : root.chatName)
+                    text: root.replyTargetName(modelData, msgDelegate.isOutgoing)
                     color: Theme.primaryText
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
@@ -644,7 +753,7 @@ Rectangle {
                   Label {
                     id: replyContentText
                     width: parent.width
-                    text: modelData.replyText || ""
+                    text: root.replyPreviewText(modelData)
                     color: Theme.secondaryText
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -951,17 +1060,24 @@ Rectangle {
               visible: !msgDelegate.isBorderlessMedia
             }
 
-            // Right-click context menu trigger for message bubble
+            // Click & Context menu trigger for message bubble
             MouseArea {
               anchors.fill: parent
-              acceptedButtons: Qt.RightButton
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
               z: 20
               cursorShape: Qt.ArrowCursor
               onClicked: function(mouse) {
+                var bubbleContentText = modelData.caption ? modelData.caption : (modelData.text || "")
+                var senderName = msgDelegate.isOutgoing ? "You" : root.chatName
+                messageContextMenu.targetMessageId = modelData.messageId || 0
+                messageContextMenu.targetSender = senderName
+                messageContextMenu.textToCopy = bubbleContentText
+                messageContextMenu.mediaPathToCopy = (modelData.filePath && modelData.filePath !== "") ? modelData.filePath : ""
+
                 if (mouse.button === Qt.RightButton) {
-                  var bubbleContentText = modelData.caption ? modelData.caption : (modelData.text || "")
-                  messageContextMenu.textToCopy = bubbleContentText
-                  messageContextMenu.mediaPathToCopy = (modelData.filePath && modelData.filePath !== "") ? modelData.filePath : ""
+                  messageContextMenu.popup()
+                } else if (mouse.button === Qt.LeftButton) {
+                  // Left-click on message bubble also presents options to reply or act
                   messageContextMenu.popup()
                 }
               }
@@ -996,27 +1112,10 @@ Rectangle {
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    height: root.hasConversation ? Math.max(78, Math.min(168, messageInput.implicitHeight + 28)) : 0
+    height: root.hasConversation ? (composerCol.implicitHeight + 20) : 0
     clip: true
 
-      color: "transparent"
-
-    /* ShaderEffectSource {
-      id: composerBackdrop
-      anchors.fill: parent
-      sourceItem: messagesArea
-      sourceRect: Qt.rect(0, 0, width, height)
-      live: true
-      hideSource: false
-      visible: false
-    }
-
-    FastBlur {
-      anchors.fill: parent
-      source: composerBackdrop
-      radius: 32
-      opacity: 0.9
-    } */
+    color: "transparent"
 
     Rectangle {
       anchors.fill: parent
@@ -1026,9 +1125,78 @@ Rectangle {
       border.width: 0
     }
 
+    ColumnLayout {
+      id: composerCol
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      anchors.leftMargin: 14
+      anchors.rightMargin: 14
+      anchors.bottomMargin: 10
+      spacing: 6
+
+      // Reply preview banner shown directly above the input box
+      Rectangle {
+        id: composerReplyBanner
+        Layout.fillWidth: true
+        implicitHeight: root.activeReply ? 42 : 0
+        visible: root.activeReply !== null
+        radius: 8
+        color: Qt.darker(Theme.elevatedBackground, 1.15)
+        border.color: Theme.divider
+        border.width: 1
+        clip: true
+
+        RowLayout {
+          anchors.fill: parent
+          anchors.margins: 6
+          spacing: 10
+
+          Rectangle {
+            Layout.preferredWidth: 3
+            Layout.fillHeight: true
+            radius: 1.5
+            color: Theme.accent
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+
+            Label {
+              text: root.activeReply ? root.activeReply.sender : ""
+              color: Theme.accent
+              font.pixelSize: 12
+              font.weight: Font.DemiBold
+              elide: Text.ElideRight
+            }
+
+            Label {
+              text: root.activeReply ? root.activeReply.text : ""
+              color: Theme.primaryText
+              font.pixelSize: 12
+              elide: Text.ElideRight
+            }
+          }
+
+          ToolButton {
+            text: "✕"
+            font.pixelSize: 12
+            implicitWidth: 26
+            implicitHeight: 26
+            focusPolicy: Qt.NoFocus
+            onClicked: root.clearReplyTarget()
+            background: Rectangle {
+              radius: 13
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+            }
+          }
+        }
+      }
+
+      // Input row
       RowLayout {
-        anchors.fill: parent
-        anchors.margins: 14
+        Layout.fillWidth: true
         spacing: 10
 
         ToolButton {
@@ -1065,13 +1233,23 @@ Rectangle {
             if (event.modifiers & Qt.ShiftModifier) {
               event.accepted = false
             } else {
-              root.sendMessageRequested(text.trim())
-              text = ""
+              if (text.trim() !== "") {
+                var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+                var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+                root.sendMessageRequested(text.trim(), replyId, quoteText)
+                root.clearReplyTarget()
+                text = ""
+              }
               event.accepted = true
             }
           }
 
           Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape && root.activeReply !== null) {
+              root.clearReplyTarget()
+              event.accepted = true
+              return
+            }
             if ((event.key === Qt.Key_V) && (event.modifiers & Qt.ControlModifier)) {
               if (appController.clipboardHasImage() || appController.clipboardHasFiles()) {
                 var pastedPath = appController.getClipboardFilePath()
@@ -1106,7 +1284,10 @@ Rectangle {
           implicitHeight: 40
           onClicked: {
             if (messageInput.text.trim() !== "") {
-              root.sendMessageRequested(messageInput.text.trim())
+              var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+              var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+              root.sendMessageRequested(messageInput.text.trim(), replyId, quoteText)
+              root.clearReplyTarget()
               messageInput.text = ""
             }
           }
@@ -1118,6 +1299,7 @@ Rectangle {
           }
         }
       }
+    }
   }
 
   FileDialog {
@@ -1127,9 +1309,15 @@ Rectangle {
     onAccepted: {
       var path = fileDialog.selectedFile.toString()
       // Remove file:// prefix if present
+      if (path.indexOf("file://") === 0) {
+        path = path.substring(7)
+      }
       var caption = messageInput.text.trim()
       messageInput.text = ""
-      root.sendMediaRequested(path, caption)
+      var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+      var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+      root.sendMediaRequested(path, caption, replyId, quoteText)
+      root.clearReplyTarget()
     }
   }
 
@@ -1137,6 +1325,8 @@ Rectangle {
   Menu {
     id: messageContextMenu
 
+    property var targetMessageId: 0
+    property string targetSender: ""
     property string textToCopy: ""
     property string mediaPathToCopy: ""
     property bool canCopyText: textToCopy.trim() !== ""
@@ -1148,6 +1338,25 @@ Rectangle {
       radius: 8
       border.color: Theme.divider
       border.width: 1
+    }
+
+    MenuItem {
+      text: "Reply"
+      contentItem: Text {
+        text: parent.text
+        color: Theme.primaryText
+        font.pixelSize: 13
+        verticalAlignment: Text.AlignVCenter
+        leftPadding: 12
+        rightPadding: 12
+      }
+      background: Rectangle {
+        color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+        radius: 4
+      }
+      onTriggered: {
+        root.setReplyTarget(messageContextMenu.targetMessageId, messageContextMenu.targetSender, messageContextMenu.textToCopy)
+      }
     }
 
     MenuItem {
@@ -1224,7 +1433,10 @@ Rectangle {
 
     function sendPendingMedia() {
       if (pendingFilePath !== "") {
-        root.sendMediaRequested(pendingFilePath, pasteCaptionInput.text.trim())
+        var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+        var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+        root.sendMediaRequested(pendingFilePath, pasteCaptionInput.text.trim(), replyId, quoteText)
+        root.clearReplyTarget()
         hide()
       }
     }

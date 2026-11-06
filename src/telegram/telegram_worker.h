@@ -21,8 +21,8 @@ public:
   void selectPhoneLogin();
   void selectQrLogin();
   void loadConversation(qint64 chatId, qint64 fromMessageId = 0, int limit = 50);
-  void sendMessage(qint64 chatId, const QString &text);
-  void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString());
+  void sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId = 0, const QString &quoteText = QString());
+  void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   void viewMessage(qint64 chatId, qint64 messageId);
 
 protected:
@@ -52,6 +52,7 @@ private:
     qint64 chatId = 0;
     qint64 messageId = 0;
     QString extra;
+    QString quote;
   };
   void enqueue(Command command);
   QMutex m_mutex;

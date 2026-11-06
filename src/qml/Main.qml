@@ -624,15 +624,15 @@ ApplicationWindow {
         telegramClient.loadConversation(firstChat.chatId)
       }
 
-      onSendMessageRequested: function(text) {
+      onSendMessageRequested: function(text, replyToMessageId, quoteText) {
         if (window.selectedChatId) {
-          telegramClient.sendMessage(window.selectedChatId, text)
+          telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
         }
       }
 
-      onSendMediaRequested: function(filePath, caption) {
+      onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
         if (window.selectedChatId) {
-          telegramClient.sendMedia(window.selectedChatId, filePath, caption)
+          telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
         }
       }
       }
