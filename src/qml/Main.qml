@@ -27,7 +27,12 @@ ApplicationWindow {
   property var selectedChatId: 0
   property string activeSection: "chats"
 
-  property var selectedChat: { chatRevision; return chatListModel.chatById(selectedChatId) }
+  property var selectedChat: {
+    chatRevision;
+    if (!selectedChatId)
+      return ({})
+    return chatListModel.chatById(selectedChatId)
+  }
   property int chatRevision: 0
 
   property bool phoneLoginStarted: false
@@ -600,7 +605,16 @@ ApplicationWindow {
 
   Connections {
     target: telegramClient
-    function onChatUpdated() { window.chatRevision++ }
+    function onChatUpdated() {
+      window.chatRevision++
+      if ((window.selectedChatId === 0 || !window.selectedChatId) && chatListModel.rowCount() > 0) {
+        var firstChat = chatListModel.chatAt(0)
+        if (firstChat && firstChat.chatId) {
+          window.selectedChatId = firstChat.chatId
+          telegramClient.loadConversation(firstChat.chatId)
+        }
+      }
+    }
   }
 
   ComboBox {

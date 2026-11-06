@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtCore
 import Qt5Compat.GraphicalEffects
 
 Item {
@@ -371,18 +372,20 @@ Item {
 
         delegate: Item {
           id: msgDelegate
-          width: ListView.view.width
+          required property var modelData
+          readonly property var mData: modelData || ({})
+          width: messageListView.width
           height: bubble.height + 4
 
-          readonly property bool isOutgoing: Boolean(modelData.outgoing)
-          readonly property bool hasReply: (modelData.replyToMessageId && modelData.replyToMessageId > 0) || (modelData.replyText !== undefined && modelData.replyText !== "")
-          readonly property bool hasMedia: modelData.mediaType !== undefined && modelData.mediaType !== "none" && modelData.mediaType !== ""
-          readonly property bool isVisualMedia: modelData.mediaType === "photo" || modelData.mediaType === "video" || modelData.mediaType === "animation"
-          readonly property bool isPhoto: modelData.mediaType === "photo"
-          readonly property bool isVideo: modelData.mediaType === "video"
-          readonly property bool isAnimation: modelData.mediaType === "animation"
-          readonly property bool isDoc: modelData.mediaType === "document" || modelData.mediaType === "audio"
-          readonly property bool hasCaption: Boolean(modelData.caption && modelData.caption.trim().length > 0)
+          readonly property bool isOutgoing: Boolean(mData.outgoing)
+          readonly property bool hasReply: (mData.replyToMessageId && mData.replyToMessageId > 0) || (mData.replyText !== undefined && mData.replyText !== "")
+          readonly property bool hasMedia: mData.mediaType !== undefined && mData.mediaType !== "none" && mData.mediaType !== ""
+          readonly property bool isVisualMedia: mData.mediaType === "photo" || mData.mediaType === "video" || mData.mediaType === "animation"
+          readonly property bool isPhoto: mData.mediaType === "photo"
+          readonly property bool isVideo: mData.mediaType === "video"
+          readonly property bool isAnimation: mData.mediaType === "animation"
+          readonly property bool isDoc: mData.mediaType === "document" || mData.mediaType === "audio"
+          readonly property bool hasCaption: Boolean(mData.caption && mData.caption.trim().length > 0)
           readonly property bool isBorderlessMedia: isVisualMedia && !hasCaption && !hasReply
 
           // Target dimensions for photos, videos, and gifs based on aspect ratio
@@ -393,8 +396,8 @@ Item {
               : Math.min(380, parent.width * 0.68)
             var minW = isAnimation ? 140 : 220
             var baseScale = isAnimation ? 180 : 280
-            var w = modelData.mediaWidth || 0
-            var h = modelData.mediaHeight || 0
+            var w = mData.mediaWidth || 0
+            var h = mData.mediaHeight || 0
             if (w <= 0 || h <= 0) {
               if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
                 w = borderlessImage.implicitWidth
@@ -420,8 +423,8 @@ Item {
             if (!isVisualMedia) return 0
             var maxH = isAnimation ? 220 : 360
             var minH = isAnimation ? 100 : 160
-            var w = modelData.mediaWidth || 0
-            var h = modelData.mediaHeight || 0
+            var w = mData.mediaWidth || 0
+            var h = mData.mediaHeight || 0
             if (w <= 0 || h <= 0) {
               if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
                 w = borderlessImage.implicitWidth
@@ -440,25 +443,25 @@ Item {
 
           TextMetrics {
             id: bubbleMetrics
-            text: modelData.caption ? modelData.caption : (modelData.text || "")
+            text: mData.caption ? mData.caption : (mData.text || "")
             font: bubbleText.font
           }
 
           TextMetrics {
             id: metaMetrics
-            text: (modelData.time || "") + (msgDelegate.isOutgoing && modelData.status ? (" " + modelData.status) : "")
+            text: (mData.time || "") + (msgDelegate.isOutgoing && mData.status ? (" " + mData.status) : "")
             font: metaTimeLabel.font
           }
 
           TextMetrics {
             id: replyContentMetrics
-            text: hasReply ? root.replyPreviewText(modelData) : ""
+            text: hasReply ? root.replyPreviewText(mData) : ""
             font: replyContentText.font
           }
 
           TextMetrics {
             id: replySenderMetrics
-            text: hasReply ? root.replyTargetName(modelData, msgDelegate.isOutgoing) : ""
+            text: hasReply ? root.replyTargetName(mData, msgDelegate.isOutgoing) : ""
             font: replySenderLabel.font
           }
 
@@ -555,7 +558,7 @@ Item {
                 anchors.right: singleMetaRow.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: modelData.text || ""
+                text: msgDelegate.mData.text || ""
                 color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                 font.pixelSize: 15
                 elide: Text.ElideNone
@@ -568,13 +571,13 @@ Item {
                 spacing: 3
 
                 Label {
-                  text: modelData.time || ""
+                  text: msgDelegate.mData.time || ""
                   color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
-                  text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
+                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
@@ -594,7 +597,7 @@ Item {
                 Image {
                   id: borderlessImage
                   anchors.fill: parent
-                  source: (modelData.filePath && modelData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   smooth: true
@@ -604,7 +607,7 @@ Item {
                 AnimatedImage {
                   id: borderlessGif
                   anchors.fill: parent
-                  source: (modelData.filePath && modelData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   smooth: true
@@ -667,11 +670,11 @@ Item {
                     radius: 22
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Qt.rgba(0, 0, 0, 0.45)
-                    visible: modelData.isDownloading || !modelData.filePath
+                    visible: msgDelegate.mData.isDownloading || !msgDelegate.mData.filePath
 
                     BusyIndicator {
                       anchors.centerIn: parent
-                      running: modelData.isDownloading || !modelData.filePath
+                      running: msgDelegate.mData.isDownloading || !msgDelegate.mData.filePath
                       width: 28
                       height: 28
                     }
@@ -679,7 +682,7 @@ Item {
 
                   Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData.isDownloading ? "Downloading..." : ""
+                    text: msgDelegate.mData.isDownloading ? "Downloading..." : ""
                     color: "#FFFFFF"
                     font.pixelSize: 12
                     visible: text.length > 0
@@ -757,7 +760,7 @@ Item {
                   height: 18
                   width: durText1.implicitWidth + 8
                   color: Qt.rgba(0, 0, 0, 0.55)
-                  visible: msgDelegate.isVideo && modelData.duration > 0
+                  visible: msgDelegate.isVideo && msgDelegate.mData.duration > 0
 
                   Label {
                     id: durText1
@@ -767,7 +770,7 @@ Item {
                       return m + ":" + (s < 10 ? "0" : "") + s
                     }
                     anchors.centerIn: parent
-                    text: formatDur(modelData.duration)
+                    text: formatDur(msgDelegate.mData.duration)
                     color: "#FFFFFF"
                     font.pixelSize: 10
                     font.weight: Font.DemiBold
@@ -790,13 +793,13 @@ Item {
                     spacing: 4
 
                     Label {
-                      text: modelData.time || ""
+                      text: msgDelegate.mData.time || ""
                       color: "#FFFFFF"
                       font.pixelSize: 11
                     }
 
                     Label {
-                      text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
+                      text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
                       color: "#FFFFFF"
                       font.pixelSize: 11
                       visible: text.length > 0
@@ -808,8 +811,8 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (modelData.filePath && modelData.filePath !== "") {
-                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                    if (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "") {
+                      mediaViewer.show(msgDelegate.mData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
                   }
                 }
@@ -863,7 +866,7 @@ Item {
                     id: replySenderLabel
                     width: parent.width
                     visible: text.length > 0
-                    text: root.replyTargetName(modelData, msgDelegate.isOutgoing)
+                    text: root.replyTargetName(msgDelegate.mData, msgDelegate.isOutgoing)
                     color: Theme.primaryText
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
@@ -873,7 +876,7 @@ Item {
                   Label {
                     id: replyContentText
                     width: parent.width
-                    text: root.replyPreviewText(modelData)
+                    text: root.replyPreviewText(msgDelegate.mData)
                     color: Theme.secondaryText
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -892,7 +895,7 @@ Item {
                 Image {
                   id: captionedImage
                   anchors.fill: parent
-                  source: (modelData.filePath && modelData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   smooth: true
@@ -902,7 +905,7 @@ Item {
                 AnimatedImage {
                   id: captionedGif
                   anchors.fill: parent
-                  source: (modelData.filePath && modelData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + modelData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   smooth: true
@@ -974,11 +977,11 @@ Item {
                     radius: 22
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Qt.rgba(0, 0, 0, 0.45)
-                    visible: modelData.isDownloading || !modelData.filePath
+                    visible: msgDelegate.mData.isDownloading || !msgDelegate.mData.filePath
 
                     BusyIndicator {
                       anchors.centerIn: parent
-                      running: modelData.isDownloading || !modelData.filePath
+                      running: msgDelegate.mData.isDownloading || !msgDelegate.mData.filePath
                       width: 28
                       height: 28
                     }
@@ -986,7 +989,7 @@ Item {
 
                   Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData.isDownloading ? "Downloading..." : ""
+                    text: msgDelegate.mData.isDownloading ? "Downloading..." : ""
                     color: "#FFFFFF"
                     font.pixelSize: 12
                     visible: text.length > 0
@@ -1064,7 +1067,7 @@ Item {
                   height: 18
                   width: durText2.implicitWidth + 8
                   color: Qt.rgba(0, 0, 0, 0.55)
-                  visible: msgDelegate.isVideo && modelData.duration > 0
+                  visible: msgDelegate.isVideo && msgDelegate.mData.duration > 0
 
                   Label {
                     id: durText2
@@ -1074,7 +1077,7 @@ Item {
                       return m + ":" + (s < 10 ? "0" : "") + s
                     }
                     anchors.centerIn: parent
-                    text: formatDur(modelData.duration)
+                    text: formatDur(msgDelegate.mData.duration)
                     color: "#FFFFFF"
                     font.pixelSize: 10
                     font.weight: Font.DemiBold
@@ -1085,8 +1088,8 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (modelData.filePath && modelData.filePath !== "") {
-                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                    if (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "") {
+                      mediaViewer.show(msgDelegate.mData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
                   }
                 }
@@ -1125,7 +1128,7 @@ Item {
 
                     Label {
                       Layout.fillWidth: true
-                      text: modelData.fileName || "Document"
+                      text: msgDelegate.mData.fileName || "Document"
                       color: Theme.primaryText
                       font.pixelSize: 13
                       font.weight: Font.Medium
@@ -1139,7 +1142,7 @@ Item {
                         if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB"
                         return (bytes / 1048576).toFixed(1) + " MB"
                       }
-                      text: (modelData.isDownloading ? "Downloading • " : (modelData.filePath ? "Downloaded • " : "")) + formatSize(modelData.fileSize)
+                      text: (msgDelegate.mData.isDownloading ? "Downloading • " : (msgDelegate.mData.filePath ? "Downloaded • " : "")) + formatSize(msgDelegate.mData.fileSize)
                       color: Theme.secondaryText
                       font.pixelSize: 11
                     }
@@ -1150,8 +1153,8 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (modelData.filePath && modelData.filePath !== "") {
-                      Qt.openUrlExternally("file://" + modelData.filePath)
+                    if (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "") {
+                      Qt.openUrlExternally("file://" + msgDelegate.mData.filePath)
                     }
                   }
                 }
@@ -1163,7 +1166,7 @@ Item {
                 width: parent.width - (msgDelegate.isVisualMedia ? 20 : 0)
                 anchors.horizontalCenter: msgDelegate.isVisualMedia ? parent.horizontalCenter : undefined
                 visible: text.length > 0 && !(msgDelegate.isPhoto && text === "Photo") && !(msgDelegate.isDoc && text === "Document")
-                text: modelData.caption ? modelData.caption : (modelData.text || "")
+                text: msgDelegate.mData.caption ? msgDelegate.mData.caption : (msgDelegate.mData.text || "")
                 color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                 wrapMode: Text.WordWrap
                 font.pixelSize: 15
@@ -1174,17 +1177,17 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: msgDelegate.isVisualMedia ? 10 : 0
                 spacing: 3
-                visible: (modelData.time !== undefined && modelData.time !== "") || (msgDelegate.isOutgoing && modelData.status !== "")
+                visible: (msgDelegate.mData.time !== undefined && msgDelegate.mData.time !== "") || (msgDelegate.isOutgoing && msgDelegate.mData.status !== "")
 
                 Label {
                   id: metaTimeLabel
-                  text: modelData.time || ""
+                  text: msgDelegate.mData.time || ""
                   color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
                   font.pixelSize: 11
                 }
 
                 Label {
-                  text: (msgDelegate.isOutgoing && modelData.status !== "") ? modelData.status : ""
+                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
@@ -1210,21 +1213,21 @@ Item {
               z: 20
               cursorShape: Qt.ArrowCursor
               onClicked: function(mouse) {
-                var bubbleContentText = modelData.caption ? modelData.caption : (modelData.text || "")
+                var bubbleContentText = msgDelegate.mData.caption ? msgDelegate.mData.caption : (msgDelegate.mData.text || "")
                 var senderName = msgDelegate.isOutgoing ? "You" : root.chatName
-                messageContextMenu.targetMessageId = modelData.messageId || 0
+                messageContextMenu.targetMessageId = msgDelegate.mData.messageId || 0
                 messageContextMenu.targetSender = senderName
                 messageContextMenu.textToCopy = bubbleContentText
-                messageContextMenu.mediaPathToCopy = (modelData.filePath && modelData.filePath !== "") ? modelData.filePath : ""
+                messageContextMenu.mediaPathToCopy = (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "") ? msgDelegate.mData.filePath : ""
 
                 if (mouse.button === Qt.RightButton) {
                   messageContextMenu.popup()
                 } else if (mouse.button === Qt.LeftButton) {
-                  if (msgDelegate.hasMedia && modelData.filePath && modelData.filePath !== "") {
+                  if (msgDelegate.hasMedia && msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "") {
                     if (msgDelegate.isDoc) {
-                      Qt.openUrlExternally("file://" + modelData.filePath)
+                      Qt.openUrlExternally("file://" + msgDelegate.mData.filePath)
                     } else if (msgDelegate.isVisualMedia) {
-                      mediaViewer.show(modelData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
+                      mediaViewer.show(msgDelegate.mData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
                   } else {
                     // Left-click on text message bubble presents options to reply or act
