@@ -13,15 +13,16 @@ Item {
   implicitWidth: 64
   width: implicitWidth
 
-  // Floating elevation shadow
-  DropShadow {
+  // Outer soft ambient elevation shadow
+  Rectangle {
     anchors.fill: glassBody
-    source: glassBody
-    radius: 16
-    samples: 24
-    color: Qt.rgba(0, 0, 0, 0.40)
-    verticalOffset: 3
-    horizontalOffset: 1
+    anchors.topMargin: 2
+    anchors.bottomMargin: -2
+    anchors.leftMargin: -1
+    anchors.rightMargin: -1
+    radius: glassBody.radius + 1
+    color: Qt.rgba(0, 0, 0, 0.18)
+    z: -1
   }
 
   // Floating liquid glass background container with rounded borders

@@ -95,15 +95,16 @@ Item {
   signal sendMessageRequested(string text, var replyToMessageId, string quoteText)
   signal sendMediaRequested(string filePath, string caption, var replyToMessageId, string quoteText)
 
-  // Floating elevation shadow
-  DropShadow {
+  // Outer soft ambient elevation shadow
+  Rectangle {
     anchors.fill: glassBody
-    source: glassBody
-    radius: 16
-    samples: 24
-    color: Qt.rgba(0, 0, 0, 0.40)
-    verticalOffset: 3
-    horizontalOffset: 1
+    anchors.topMargin: 2
+    anchors.bottomMargin: -2
+    anchors.leftMargin: -1
+    anchors.rightMargin: -1
+    radius: glassBody.radius + 1
+    color: Qt.rgba(0, 0, 0, 0.18)
+    z: -1
   }
 
   // Liquid glass background container
@@ -401,7 +402,7 @@ Item {
           required property var modelData
           readonly property var mData: modelData || ({})
           width: messageListView.width
-          height: bubble.height + 4
+          height: bubble.height + 6
 
           readonly property bool isOutgoing: Boolean(mData.outgoing)
           readonly property bool hasReply: (mData.replyToMessageId && mData.replyToMessageId > 0) || (mData.replyText !== undefined && mData.replyText !== "")
@@ -521,6 +522,36 @@ Item {
           readonly property real minBubbleWidth: isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 200 : (msgDelegate.isOutgoing ? 175 : 160)))
 
           readonly property bool fitsSingleLine: !hasMedia && !hasReply && (inlineNeededWidth <= maxBubbleWidth)
+
+          // Ambient Elevation Glow/Shadow layer 2 (wider, softer spread)
+          Rectangle {
+            z: 1
+            x: bubble.x - 1
+            y: bubble.y + 2
+            width: bubble.width + 2
+            height: bubble.height + 1
+            topLeftRadius: bubble.topLeftRadius + 1
+            topRightRadius: bubble.topRightRadius + 1
+            bottomLeftRadius: bubble.bottomLeftRadius + 1
+            bottomRightRadius: bubble.bottomRightRadius + 1
+            color: Qt.rgba(0, 0, 0, 0.12)
+            visible: !msgDelegate.isBorderlessMedia
+          }
+
+          // Direct Elevation Cast Shadow layer 1 (contact shadow)
+          Rectangle {
+            z: 2
+            x: bubble.x
+            y: bubble.y + 1
+            width: bubble.width
+            height: bubble.height
+            topLeftRadius: bubble.topLeftRadius
+            topRightRadius: bubble.topRightRadius
+            bottomLeftRadius: bubble.bottomLeftRadius
+            bottomRightRadius: bubble.bottomRightRadius
+            color: Qt.rgba(0, 0, 0, 0.22)
+            visible: !msgDelegate.isBorderlessMedia
+          }
 
           Rectangle {
             id: bubble
@@ -1219,17 +1250,6 @@ Item {
                   visible: text.length > 0
                 }
               }
-            }
-
-            DropShadow {
-              anchors.fill: parent
-              source: bubble
-              radius: 12
-              samples: 20
-              color: Qt.rgba(0, 0, 0, 0.32)
-              verticalOffset: 3
-              z: -1
-              visible: !msgDelegate.isBorderlessMedia
             }
 
             // Click & Context menu trigger for message bubble
