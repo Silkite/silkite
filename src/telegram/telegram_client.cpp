@@ -81,6 +81,7 @@ TelegramClient::TelegramClient(QObject *parent)
       }
     }
     m_conversationMessages = merged;
+    m_messageModel.setMessages(merged);
     emit conversationMessagesChanged();
 
     // If TDLib only returned a small set (e.g. initial cache had only 1 message),
@@ -127,6 +128,7 @@ TelegramClient::TelegramClient(QObject *parent)
       QVariantMap msgCopy = message;
       resolveReplyInfo(msgCopy);
       m_conversationMessages.append(msgCopy);
+      m_messageModel.appendMessage(msgCopy);
       emit conversationMessagesChanged();
     }
   });
@@ -151,6 +153,7 @@ TelegramClient::TelegramClient(QObject *parent)
       }
     }
     if (!found) m_conversationMessages.append(msgCopy);
+    m_messageModel.replaceMessageId(oldId, msgCopy);
     emit conversationMessagesChanged();
   });
   connect(&m_worker, &TelegramWorker::chatReadOutboxUpdated, this, [this](qint64 chatId, qint64 lastReadId) {
@@ -164,6 +167,7 @@ TelegramClient::TelegramClient(QObject *parent)
         changed = true;
       }
     }
+    m_messageModel.updateReadOutbox(lastReadId);
     if (changed) emit conversationMessagesChanged();
   });
   connect(&m_worker, &TelegramWorker::chatTyping, this, [this](qint64 chatId, bool active) { if (chatId != m_activeChatId || m_typing == active) return; m_typing = active; emit typingChanged(); });
@@ -180,7 +184,10 @@ TelegramClient::TelegramClient(QObject *parent)
         break;
       }
     }
-    if (changed) emit conversationMessagesChanged();
+    if (changed) {
+      m_messageModel.updateMessageFile(messageId, filePath);
+      emit conversationMessagesChanged();
+    }
   });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
@@ -265,7 +272,15 @@ void TelegramClient::requestQrLogin() { m_worker.submitQrLogin(); }
 void TelegramClient::resendAuthenticationCode() { m_worker.resendAuthenticationCode(); }
 void TelegramClient::selectPhoneLogin() { m_worker.selectPhoneLogin(); }
 void TelegramClient::selectQrLogin() { m_worker.selectQrLogin(); }
-void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) { m_activeChatId = chatId; m_typing = false; emit typingChanged(); m_conversationMessages.clear(); emit conversationMessagesChanged(); m_worker.loadConversation(chatId, fromMessageId); }
+void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) {
+  m_activeChatId = chatId;
+  m_typing = false;
+  emit typingChanged();
+  m_conversationMessages.clear();
+  m_messageModel.clear();
+  emit conversationMessagesChanged();
+  m_worker.loadConversation(chatId, fromMessageId);
+}
 void TelegramClient::sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId, const QString &quoteText) {
   if (chatId != 0 && !text.trimmed().isEmpty()) m_worker.sendMessage(chatId, text.trimmed(), replyToMessageId, quoteText.trimmed());
 }

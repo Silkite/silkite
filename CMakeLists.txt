@@ -38,6 +38,8 @@ qt_add_executable(silkite
   src/models/chat_list_model.h
   src/models/chat_organization_manager.cpp
   src/models/chat_organization_manager.h
+  src/models/message_list_model.cpp
+  src/models/message_list_model.h
 
   src/telegram/telegram_client.cpp
   src/telegram/telegram_client.h

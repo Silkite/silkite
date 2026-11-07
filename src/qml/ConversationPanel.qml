@@ -17,6 +17,7 @@ Item {
   property string statusText: ""
   property bool isOnline: false
   property var messages: []
+  property var messageModel: null
   property bool typing: false
 
   // Pill notification button tracking unread/new messages arriving while scrolled up
@@ -31,40 +32,26 @@ Item {
     if (messageListView.count === 0) return true
     if (messageListView.contentHeight <= messageListView.height) return true
     var maxScrollY = messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin
-    return Math.abs(messageListView.contentY - maxScrollY) <= 32 || messageListView.atYEnd
+    return Math.abs(messageListView.contentY - maxScrollY) <= 48 || messageListView.atYEnd
   }
 
   function scrollToBottomSmoothly() {
     unreadIncomingCount = 0
     if (messageListView.count === 0) return
     lastKnownAtBottom = true
-    scheduleBottomScroll(true)
+    messageListView.positionViewAtEnd()
   }
 
   function scheduleBottomScroll(animated) {
-    bottomScrollScheduled = true
+    if (messageListView.count === 0) return
+    lastKnownAtBottom = true
+    messageScrollAnim.stop()
+    messageListView.positionViewAtEnd()
+    // Run once more on next tick to account for any deferred delegate resizing
     Qt.callLater(function() {
-      // A model reset can happen after the first queued callback. Wait one
-      // more event-loop turn so ListView has finished restoring its delegates.
-      Qt.callLater(function() {
-        bottomScrollScheduled = false
-        if (messageListView.count === 0) return
-
-        var minY = messageListView.originY - messageListView.topMargin
-        var maxY = messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin
-        maxY = Math.max(minY, maxY)
-
-        messageScrollAnim.stop()
-        if (!animated || maxY <= messageListView.contentY + 1) {
-          messageListView.contentY = maxY
-          return
-        }
-
-        messageScrollAnim.duration = 200
-        messageScrollAnim.from = messageListView.contentY
-        messageScrollAnim.to = maxY
-        messageScrollAnim.start()
-      })
+      if (messageListView.count > 0 && lastKnownAtBottom) {
+        messageListView.positionViewAtEnd()
+      }
     })
   }
 
@@ -81,33 +68,34 @@ Item {
     }
   }
 
-  onMessagesChanged: {
-    var newCount = messages ? messages.length : 0
-
+  function handleMessageCountChange(newCount) {
     if (newCount > previousMessageCount) {
       var added = newCount - previousMessageCount
-      // Read the position captured before the array/model reset. Reading
-      // contentY here can already report the reset-to-top position.
       var atBottom = (previousMessageCount === 0) || lastKnownAtBottom
       var isFirstLoad = (previousMessageCount === 0)
       previousMessageCount = newCount
 
       if (atBottom) {
         unreadIncomingCount = 0
-        if (isFirstLoad) {
-          // Initial conversation load: immediately position the latest bottom message
-          scheduleBottomScroll(false)
-        } else {
-          // Live message arrive/sent: smoothly scroll down just enough to reveal the new chat bubble
-          pendingScrollToBottom = true
-        }
+        scheduleBottomScroll(!isFirstLoad)
       } else {
         unreadIncomingCount += added
       }
     } else {
       previousMessageCount = newCount
-      // When message count is unchanged (status update ✓ -> ✓✓, edits, read receipt),
-      // preserve exact position with zero layout jumps or repositioning
+    }
+  }
+
+  onMessagesChanged: {
+    if (!messageModel) {
+      handleMessageCountChange(messages ? messages.length : 0)
+    }
+  }
+
+  Connections {
+    target: root.messageModel
+    function onCountChanged() {
+      root.handleMessageCountChange(root.messageModel ? root.messageModel.count : 0)
     }
   }
 
@@ -139,11 +127,18 @@ Item {
       return sender
     }
     var replyId = msgData.replyToMessageId
-    if (replyId && root.messages) {
-      for (var i = 0; i < root.messages.length; ++i) {
-        var m = root.messages[i]
-        if (m.messageId === replyId) {
-          return m.outgoing ? "You" : root.chatName
+    if (replyId) {
+      if (root.messageModel) {
+        var mTarget = root.messageModel.getByMessageId(replyId)
+        if (mTarget && mTarget.messageId) {
+          return mTarget.outgoing ? "You" : root.chatName
+        }
+      } else if (root.messages) {
+        for (var i = 0; i < root.messages.length; ++i) {
+          var m = root.messages[i]
+          if (m.messageId === replyId) {
+            return m.outgoing ? "You" : root.chatName
+          }
         }
       }
     }
@@ -156,19 +151,28 @@ Item {
       return msgData.replyText
     }
     var replyId = msgData.replyToMessageId
-    if (replyId && root.messages) {
-      for (var i = 0; i < root.messages.length; ++i) {
-        var m = root.messages[i]
-        if (m.messageId === replyId) {
-          if (m.caption && m.caption.trim() !== "") return m.caption
-          if (m.text && m.text.trim() !== "") return m.text
-          if (m.mediaType && m.mediaType !== "none") {
-            if (m.mediaType === "photo") return "Photo"
-            if (m.mediaType === "video") return "Video"
-            if (m.mediaType === "animation") return "GIF"
-            if (m.mediaType === "audio") return "Audio"
-            if (m.mediaType === "document") return m.fileName || "Document"
+    if (replyId) {
+      var targetMsg = null
+      if (root.messageModel) {
+        var found = root.messageModel.getByMessageId(replyId)
+        if (found && found.messageId) targetMsg = found
+      } else if (root.messages) {
+        for (var i = 0; i < root.messages.length; ++i) {
+          if (root.messages[i].messageId === replyId) {
+            targetMsg = root.messages[i]
+            break
           }
+        }
+      }
+      if (targetMsg) {
+        if (targetMsg.caption && targetMsg.caption.trim() !== "") return targetMsg.caption
+        if (targetMsg.text && targetMsg.text.trim() !== "") return targetMsg.text
+        if (targetMsg.mediaType && targetMsg.mediaType !== "none") {
+          if (targetMsg.mediaType === "photo") return "Photo"
+          if (targetMsg.mediaType === "video") return "Video"
+          if (targetMsg.mediaType === "animation") return "GIF"
+          if (targetMsg.mediaType === "audio") return "Audio"
+          if (targetMsg.mediaType === "document") return targetMsg.fileName || "Document"
         }
       }
     }
@@ -442,7 +446,7 @@ Item {
         clip: true
         anchors.fill: parent
         visible: root.hasConversation
-        model: root.messages
+        model: root.messageModel ? root.messageModel : root.messages
         spacing: 6
         topMargin: 12
         bottomMargin: 12
@@ -458,20 +462,11 @@ Item {
         }
 
         onMovementEnded: {
-          if (!root.pendingScrollToBottom && !root.bottomScrollScheduled) {
-            root.lastKnownAtBottom = root.isScrolledToBottom()
-          }
+          root.lastKnownAtBottom = root.isScrolledToBottom()
         }
 
         onDragStarted: {
           root.lastKnownAtBottom = false
-        }
-
-        onContentHeightChanged: {
-          if (root.pendingScrollToBottom) {
-            root.pendingScrollToBottom = false
-            root.scheduleBottomScroll(true)
-          }
         }
 
         NumberAnimation {
@@ -1399,7 +1394,7 @@ Item {
 
       Label {
         anchors.centerIn: parent
-        visible: root.hasConversation && root.messages.length === 0
+        visible: root.hasConversation && (root.messageModel ? root.messageModel.count === 0 : root.messages.length === 0)
         text: "Your conversation will appear here."
         color: Theme.secondaryText
       }

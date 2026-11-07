@@ -6,6 +6,7 @@
 #include <QVariantList>
 
 #include "telegram_worker.h"
+#include "../models/message_list_model.h"
 
 class TelegramClient final : public QObject {
   Q_OBJECT
@@ -16,6 +17,7 @@ class TelegramClient final : public QObject {
   Q_PROPERTY(int authenticationCodeLength READ authenticationCodeLength NOTIFY authenticationCodeLengthChanged)
   Q_PROPERTY(int authenticationCodeTimeout READ authenticationCodeTimeout NOTIFY authenticationCodeTimeoutChanged)
   Q_PROPERTY(QVariantList conversationMessages READ conversationMessages NOTIFY conversationMessagesChanged)
+  Q_PROPERTY(MessageListModel* messageModel READ messageModel CONSTANT)
   Q_PROPERTY(bool typing READ typing NOTIFY typingChanged)
 
 public:
@@ -39,6 +41,7 @@ public:
   Q_INVOKABLE void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void viewMessage(qint64 chatId, qint64 messageId);
   QVariantList conversationMessages() const;
+  MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;
 
 signals:
@@ -65,6 +68,7 @@ private:
   int m_authenticationCodeLength = 5;
   int m_authenticationCodeTimeout = 60;
   QVariantList m_conversationMessages;
+  MessageListModel m_messageModel;
   qint64 m_activeChatId = 0;
   bool m_typing = false;
   QHash<qint64, QString> m_chatTitles;

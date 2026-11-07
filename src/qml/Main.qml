@@ -1095,6 +1095,7 @@ ApplicationWindow {
           lastMessage: window.selectedChat.lastMessage || ""
           statusText: window.selectedChat.statusText || ""
           isOnline: window.selectedChat.isOnline || false
+          messageModel: telegramClient.messageModel
           messages: telegramClient.conversationMessages
           typing: telegramClient.typing
           appVersion: appController.appVersion
