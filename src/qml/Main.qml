@@ -93,6 +93,13 @@ ApplicationWindow {
   property real primaryPaneRatio: 0.5
   property bool paneSplitterDragging: false
 
+  // Global Drag Replica State
+  property bool isDraggingChatReplica: false
+  property var draggedChatData: null
+  property real dragReplicaTargetX: 0
+  property real dragReplicaTargetY: 0
+  property bool dragOverSecondaryPane: false
+
   onWidthChanged: {
     if (!canEnableSplitPane && splitPaneActive) {
       splitPaneActive = false
@@ -934,7 +941,7 @@ ApplicationWindow {
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 30
+      height: 36
       color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
       border.color: "transparent"
       border.width: 1
@@ -950,23 +957,53 @@ ApplicationWindow {
 
       RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 8
+        anchors.leftMargin: 4
         anchors.rightMargin: 8
-        spacing: 8
+        spacing: 6
 
         Image {
-          Layout.preferredWidth: 20
-          Layout.preferredHeight: 20
+          Layout.preferredWidth: 32
+          Layout.preferredHeight: 32
+          Layout.alignment: Qt.AlignVCenter
           source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
           fillMode: Image.PreserveAspectFit
           smooth: true
+          mipmap: true
         }
 
-        Label {
-          text: appController.appName
-          font.bold: true
-          font.pixelSize: 14
-          color: Theme.primaryText
+        ToolButton {
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
+          icon.width: 20
+          icon.height: 20
+          icon.color: Theme.primaryText
+          enabled: true
+          focusPolicy: Qt.NoFocus
+          padding: 0
+          implicitWidth: 28
+          implicitHeight: 28
+          ToolTip.visible: hovered
+          ToolTip.text: window.chatListExpanded ? "Hide chats" : "Show chats"
+          ToolTip.delay: 400
+          background: Rectangle {
+            radius: 8
+            color: parent.hovered ? Theme.controlBackground : "transparent"
+            border.color: parent.hovered ? Theme.divider : "transparent"
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 7
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, 0.08)
+              border.width: 1
+              visible: parent.parent.hovered
+            }
+          }
+          onClicked: {
+            window.chatListExpanded = !window.chatListExpanded
+            window.chatListAutoExpanded = false
+          }
         }
 
         Item {
@@ -1009,41 +1046,6 @@ ApplicationWindow {
             } else {
               window.splitPaneActive = true
             }
-          }
-        }
-
-        ToolButton {
-          icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
-          icon.width: 20
-          icon.height: 20
-          icon.color: Theme.primaryText
-          enabled: true
-          focusPolicy: Qt.NoFocus
-          padding: 0
-          implicitWidth: 28
-          implicitHeight: 28
-          ToolTip.visible: hovered
-          ToolTip.text: window.chatListExpanded ? "Hide chats" : "Show chats"
-          ToolTip.delay: 400
-          background: Rectangle {
-            radius: 8
-            color: parent.hovered ? Theme.controlBackground : "transparent"
-            border.color: parent.hovered ? Theme.divider : "transparent"
-            border.width: 1
-
-            Rectangle {
-              anchors.fill: parent
-              anchors.margins: 1
-              radius: 7
-              color: "transparent"
-              border.color: Qt.rgba(1, 1, 1, 0.08)
-              border.width: 1
-              visible: parent.parent.hovered
-            }
-          }
-          onClicked: {
-            window.chatListExpanded = !window.chatListExpanded
-            window.chatListAutoExpanded = false
           }
         }
       }
@@ -1158,6 +1160,43 @@ ApplicationWindow {
 
           onOpenInSplitRequested: function(chatId) {
             window.openInSecondaryPane(chatId)
+          }
+
+          onDragStarted: function(chatData, startPos) {
+            if (!window.canEnableSplitPane) return
+            // Auto-open split pane if not open so user has a drop area!
+            if (!window.splitPaneActive) {
+              window.splitPaneActive = true
+            }
+            window.draggedChatData = chatData
+            window.dragReplicaTargetX = startPos.x - 40
+            window.dragReplicaTargetY = startPos.y - 30
+            window.isDraggingChatReplica = true
+          }
+
+          onDragMoved: function(globalPos) {
+            if (!window.isDraggingChatReplica) return
+            window.dragReplicaTargetX = globalPos.x - 40
+            window.dragReplicaTargetY = globalPos.y - 30
+
+            // Check if hovered over secondaryPaneContainer
+            var secPos = secondaryPaneContainer.mapFromItem(null, globalPos.x, globalPos.y)
+            window.dragOverSecondaryPane = (secPos.x >= 0 && secPos.x <= secondaryPaneContainer.width &&
+                                            secPos.y >= 0 && secPos.y <= secondaryPaneContainer.height)
+          }
+
+          onDragEnded: function(globalPos) {
+            if (!window.isDraggingChatReplica) return
+            var secPos = secondaryPaneContainer.mapFromItem(null, globalPos.x, globalPos.y)
+            var droppedInside = (secPos.x >= 0 && secPos.x <= secondaryPaneContainer.width &&
+                                 secPos.y >= 0 && secPos.y <= secondaryPaneContainer.height)
+
+            if (droppedInside && window.draggedChatData && window.draggedChatData.chatId) {
+              window.openInSecondaryPane(window.draggedChatData.chatId)
+            }
+            window.isDraggingChatReplica = false
+            window.dragOverSecondaryPane = false
+            window.draggedChatData = null
           }
         }
 
@@ -1418,8 +1457,8 @@ ApplicationWindow {
               anchors.fill: parent
               radius: 18
               color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
-              border.color: chatDropArea.containsDrag ? Theme.accent : Theme.divider
-              border.width: chatDropArea.containsDrag ? 2 : 1
+              border.color: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? Theme.accent : Theme.divider
+              border.width: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? 2 : 1
 
               Behavior on border.color { ColorAnimation { duration: 150 } }
 
@@ -1465,8 +1504,8 @@ ApplicationWindow {
                 width: 56
                 height: 56
                 radius: 28
-                color: chatDropArea.containsDrag ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.controlBackground
-                border.color: chatDropArea.containsDrag ? Theme.accent : Theme.divider
+                color: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.controlBackground
+                border.color: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? Theme.accent : Theme.divider
                 border.width: 1
 
                 Image {
@@ -1480,10 +1519,10 @@ ApplicationWindow {
 
               Label {
                 Layout.alignment: Qt.AlignHCenter
-                text: chatDropArea.containsDrag ? "Drop chat here to open" : "Secondary Chat Pane"
+                text: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? "Drop chat here to open" : "Secondary Chat Pane"
                 font.bold: true
                 font.pixelSize: 16
-                color: chatDropArea.containsDrag ? Theme.accent : Theme.primaryText
+                color: (chatDropArea.containsDrag || window.dragOverSecondaryPane) ? Theme.accent : Theme.primaryText
               }
 
               Label {
@@ -1646,6 +1685,110 @@ ApplicationWindow {
         onEntered: {
           window.chatListExpanded = true
           window.chatListAutoExpanded = true
+        }
+      }
+    }
+  }
+
+  // Floating replica of the chat item while dragging across the app
+  Item {
+    id: dragReplicaItem
+    z: 9999
+    visible: window.isDraggingChatReplica && window.draggedChatData !== null
+    width: 260
+    height: 64
+    x: window.dragReplicaTargetX
+    y: window.dragReplicaTargetY
+
+    // Smooth inertia / lag-free fluid tracking (short gentle spring)
+    Behavior on x {
+      NumberAnimation { duration: 40; easing.type: Easing.OutQuad }
+    }
+    Behavior on y {
+      NumberAnimation { duration: 40; easing.type: Easing.OutQuad }
+    }
+
+    scale: window.dragOverSecondaryPane ? 1.05 : 1.0
+    rotation: window.dragOverSecondaryPane ? 1.5 : -1.5
+    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+    Behavior on rotation { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+    // Ambient drop shadow
+    Rectangle {
+      anchors.fill: replicaBody
+      anchors.topMargin: 8
+      anchors.bottomMargin: -6
+      anchors.leftMargin: -3
+      anchors.rightMargin: -3
+      radius: replicaBody.radius + 2
+      color: Qt.rgba(0, 0, 0, 0.35)
+      z: -1
+    }
+
+    // Glass card replica
+    Rectangle {
+      id: replicaBody
+      anchors.fill: parent
+      radius: 14
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.95)
+      border.color: window.dragOverSecondaryPane ? Theme.accent : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
+      border.width: 1.5
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: 13
+        color: "transparent"
+        border.color: Qt.rgba(1, 1, 1, 0.15)
+        border.width: 1
+      }
+
+      RowLayout {
+        anchors.fill: parent
+        anchors.leftMargin: 12
+        anchors.rightMargin: 12
+        spacing: 10
+
+        // Avatar
+        Rectangle {
+          Layout.preferredWidth: 40
+          Layout.preferredHeight: 40
+          radius: 20
+          color: (window.draggedChatData && window.draggedChatData.avatarColor) ? window.draggedChatData.avatarColor : Theme.accent
+          border.color: Qt.rgba(1, 1, 1, 0.2)
+          border.width: 1
+
+          Label {
+            anchors.centerIn: parent
+            text: (window.draggedChatData && window.draggedChatData.initials) ? window.draggedChatData.initials : "?"
+            color: "#FFFFFF"
+            font.bold: true
+            font.pixelSize: 14
+          }
+        }
+
+        // Details
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 2
+
+          Label {
+            text: (window.draggedChatData && window.draggedChatData.name) ? window.draggedChatData.name : ""
+            color: Theme.primaryText
+            font.bold: true
+            font.pixelSize: 13
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+          }
+
+          Label {
+            text: window.dragOverSecondaryPane ? "Release to open here" : ((window.draggedChatData && window.draggedChatData.lastMessage) ? window.draggedChatData.lastMessage : "Chat")
+            color: window.dragOverSecondaryPane ? Theme.accent : Theme.secondaryText
+            font.pixelSize: 11
+            font.weight: window.dragOverSecondaryPane ? Font.Medium : Font.Normal
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+          }
         }
       }
     }

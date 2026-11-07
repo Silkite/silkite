@@ -16,6 +16,9 @@ Item {
 
   signal chatSelected(var chatId)
   signal openInSplitRequested(var chatId)
+  signal dragStarted(var chatData, point startPos)
+  signal dragMoved(point globalPos)
+  signal dragEnded(point globalPos)
 
   NewFolderDialog {
     id: newFolderDialog
@@ -340,44 +343,81 @@ Item {
           }
         }
 
-        // Mouse Area for handling click, right-click, and drag-and-drop
+        // Mouse Area for handling click, right-click, and long-press drag-and-drop
         MouseArea {
           id: delegateMouseArea
           anchors.fill: parent
           acceptedButtons: Qt.LeftButton | Qt.RightButton
-          drag.target: dragProxy
-          drag.axis: Drag.XAndYAxis
+          hoverEnabled: true
 
-          Item {
-            id: dragProxy
-            width: 44
-            height: 44
-            Drag.active: delegateMouseArea.drag.active
-            Drag.source: chatDelegate
-            Drag.hotSpot.x: 22
-            Drag.hotSpot.y: 22
-            Drag.keys: ["silkite/chat"]
+          property bool isLongPressed: false
+          property bool isDragging: false
+          property point pressPos: Qt.point(0, 0)
 
-            property var dragChatId: chatDelegate.chatId
-            property string dragChatName: chatDelegate.name
-
-            // Visual feedback floating with mouse while dragging
-            Rectangle {
-              anchors.fill: parent
-              radius: 22
-              color: chatDelegate.avatarColor
-              opacity: 0.85
-              border.color: Theme.accent
-              border.width: 2
-              visible: delegateMouseArea.drag.active
-
-              Label {
-                anchors.centerIn: parent
-                text: chatDelegate.initials
-                color: "#FFFFFF"
-                font.bold: true
-                font.pixelSize: 14
+          Timer {
+            id: longPressTimer
+            interval: 320
+            repeat: false
+            onTriggered: {
+              if (delegateMouseArea.pressed && delegateMouseArea.pressedButtons & Qt.LeftButton) {
+                delegateMouseArea.isLongPressed = true
+                delegateMouseArea.isDragging = true
+                var gPos = delegateMouseArea.mapToItem(null, delegateMouseArea.pressPos.x, delegateMouseArea.pressPos.y)
+                var chatInfo = {
+                  chatId: chatDelegate.chatId,
+                  name: chatDelegate.name,
+                  initials: chatDelegate.initials,
+                  avatarColor: chatDelegate.avatarColor,
+                  avatarPath: chatDelegate.avatarPath,
+                  lastMessage: chatDelegate.lastMessage,
+                  time: chatDelegate.time
+                }
+                root.dragStarted(chatInfo, gPos)
               }
+            }
+          }
+
+          onPressed: function(mouse) {
+            if (mouse.button === Qt.LeftButton) {
+              pressPos = Qt.point(mouse.x, mouse.y)
+              isLongPressed = false
+              isDragging = false
+              longPressTimer.start()
+            }
+          }
+
+          onPositionChanged: function(mouse) {
+            if (isDragging) {
+              var gPos = delegateMouseArea.mapToItem(null, mouse.x, mouse.y)
+              root.dragMoved(gPos)
+            } else if (!isLongPressed) {
+              // If user moves mouse significantly before long press triggers, cancel long press
+              var dx = mouse.x - pressPos.x
+              var dy = mouse.y - pressPos.y
+              if ((dx * dx + dy * dy) > 64) {
+                longPressTimer.stop()
+              }
+            }
+          }
+
+          onReleased: function(mouse) {
+            longPressTimer.stop()
+            if (isDragging) {
+              var gPos = delegateMouseArea.mapToItem(null, mouse.x, mouse.y)
+              root.dragEnded(gPos)
+              isDragging = false
+              isLongPressed = false
+            } else if (!isLongPressed && mouse.button === Qt.LeftButton) {
+              root.chatSelected(chatDelegate.chatId)
+            }
+          }
+
+          onCanceled: {
+            longPressTimer.stop()
+            if (isDragging) {
+              root.dragEnded(Qt.point(-1, -1))
+              isDragging = false
+              isLongPressed = false
             }
           }
 
@@ -386,8 +426,6 @@ Item {
               chatContextMenu.targetChatId = chatDelegate.chatId
               chatContextMenu.targetChatName = chatDelegate.name
               chatContextMenu.popup()
-            } else if (mouse.button === Qt.LeftButton) {
-              root.chatSelected(chatDelegate.chatId)
             }
           }
         }
