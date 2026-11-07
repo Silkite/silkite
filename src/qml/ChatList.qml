@@ -12,6 +12,16 @@ Item {
 
   signal chatSelected(var chatId)
 
+  NewFolderDialog {
+    id: newFolderDialog
+    organizationManager: chatOrganizationManager
+  }
+
+  ManageChatFoldersDialog {
+    id: manageFoldersDialog
+    organizationManager: chatOrganizationManager
+  }
+
   // Floating elevation shadow
   DropShadow {
     anchors.fill: glassBody
@@ -57,6 +67,19 @@ Item {
       font.pixelSize: 22
       font.bold: true
       color: Theme.primaryText
+    }
+
+    // Chat Organization: Folder bar with "New Folder" & Folder pills
+    FolderBar {
+      id: folderBar
+      Layout.fillWidth: true
+      organizationManager: chatOrganizationManager
+      chatModel: root.chatModel
+      selectedChatId: root.selectedChatId
+
+      onCreateFolderRequested: {
+        newFolderDialog.open()
+      }
     }
 
     TextField {
@@ -108,11 +131,12 @@ Item {
         required property string avatarColor
         required property string avatarPath
         required property int unreadCount
+        required property var folderNames
 
         readonly property bool isSelected: chatDelegate.chatId === root.selectedChatId
 
         width: chatList.width
-        height: 72
+        height: (folderNames && folderNames.length > 0) ? 78 : 72
         clip: true
 
         background: Rectangle {
@@ -246,6 +270,58 @@ Item {
                 }
               }
             }
+
+            // Folder tags row if chat belongs to folders
+            RowLayout {
+              visible: chatDelegate.folderNames && chatDelegate.folderNames.length > 0
+              spacing: 4
+              Layout.fillWidth: true
+
+              Repeater {
+                model: chatDelegate.folderNames || []
+                delegate: Rectangle {
+                  required property string modelData
+                  height: 16
+                  radius: 4
+                  implicitWidth: tagLabel.implicitWidth + 8
+                  color: chatDelegate.isSelected ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+
+                  Label {
+                    id: tagLabel
+                    anchors.centerIn: parent
+                    text: parent.modelData
+                    font.pixelSize: 9
+                    color: chatDelegate.isSelected ? Theme.accentText : Theme.accent
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Right click context menu to organize chat
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.RightButton
+          onClicked: {
+            chatContextMenu.targetChatId = chatDelegate.chatId
+            chatContextMenu.targetChatName = chatDelegate.name
+            chatContextMenu.popup()
+          }
+        }
+      }
+
+      Menu {
+        id: chatContextMenu
+        property var targetChatId: 0
+        property string targetChatName: ""
+
+        MenuItem {
+          text: "Move to Folder..."
+          onTriggered: {
+            manageFoldersDialog.chatId = chatContextMenu.targetChatId
+            manageFoldersDialog.chatName = chatContextMenu.targetChatName
+            manageFoldersDialog.open()
           }
         }
       }

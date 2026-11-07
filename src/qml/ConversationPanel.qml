@@ -361,6 +361,9 @@ Item {
         spacing: 6
         topMargin: 12
         bottomMargin: 12
+        boundsBehavior: Flickable.StopAtBounds
+        maximumFlickVelocity: 4000
+        flickDeceleration: 1600
 
         // Maintain bottom-anchored view so incoming/outgoing messages and status updates keep scroll pinned to bottom
         onCountChanged: {
@@ -368,6 +371,29 @@ Item {
             if (messageListView.count > 0)
               messageListView.positionViewAtEnd()
           })
+        }
+
+        // Smooth and accelerated mouse wheel scrolling leveraging native kinetic physics
+        WheelHandler {
+          id: messageWheelHandler
+          target: null
+          acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+          onWheel: (event) => {
+            if (event.angleDelta.y === 0) return
+
+            // Native flick velocity: positive flick() moves content downwards (scroll up), negative moves up (scroll down)
+            var stepVelocity = (event.angleDelta.y / 120.0) * 1400.0
+            var currentV = messageListView.flickingVertically ? messageListView.verticalVelocity : 0
+            var targetVelocity = currentV + stepVelocity
+
+            // Clamp velocity to ListView's maximumFlickVelocity
+            var maxV = messageListView.maximumFlickVelocity
+            if (targetVelocity > maxV) targetVelocity = maxV
+            else if (targetVelocity < -maxV) targetVelocity = -maxV
+
+            messageListView.flick(0, targetVelocity)
+            event.accepted = true
+          }
         }
 
         delegate: Item {

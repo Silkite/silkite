@@ -5,6 +5,7 @@
 #include <QQuickWindow>
 #include "app_controller.h"
 #include "models/chat_list_model.h"
+#include "models/chat_organization_manager.h"
 #include "theme/theme_manager.h"
 #include "telegram/telegram_client.h"
 
@@ -19,7 +20,9 @@ int main(int argc, char *argv[]) {
   AppController appController;
   ThemeManager themeManager;
 
+  ChatOrganizationManager chatOrganizationManager;
   ChatListModel chatListModel;
+  chatListModel.setOrganizationManager(&chatOrganizationManager);
 
   TelegramClient telegramClient;
 
@@ -38,6 +41,7 @@ int main(int argc, char *argv[]) {
 
   engine.rootContext()->setContextProperty("appController", &appController);
   engine.rootContext()->setContextProperty("Theme", &themeManager);
+  engine.rootContext()->setContextProperty("chatOrganizationManager", &chatOrganizationManager);
   engine.rootContext()->setContextProperty("chatListModel", &chatListModel);
   engine.rootContext()->setContextProperty("telegramClient", &telegramClient);
 

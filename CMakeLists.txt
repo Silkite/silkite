@@ -36,6 +36,8 @@ qt_add_executable(silkite
 
   src/models/chat_list_model.cpp
   src/models/chat_list_model.h
+  src/models/chat_organization_manager.cpp
+  src/models/chat_organization_manager.h
 
   src/telegram/telegram_client.cpp
   src/telegram/telegram_client.h
@@ -53,6 +55,9 @@ qt_add_qml_module(silkite
     src/qml/Sidebar.qml
     src/qml/ChatList.qml
     src/qml/ConversationPanel.qml
+    src/qml/FolderBar.qml
+    src/qml/NewFolderDialog.qml
+    src/qml/ManageChatFoldersDialog.qml
 
   RESOURCES
     assets/logo-transparent.png

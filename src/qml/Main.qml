@@ -790,16 +790,40 @@ ApplicationWindow {
         anchors.left: sidebarReservedArea.right
         anchors.topMargin: 10
         anchors.bottomMargin: 10
-        anchors.leftMargin: 10
-        visible: window.chatListExpanded
-        width: window.compactLayout
-          ? (window.chatListExpanded ? 300 : 0)
-          : (window.chatListExpanded ? 340 : 0)
+        anchors.leftMargin: window.chatListExpanded ? 10 : 0
+        clip: true
+
+        readonly property real targetWidth: window.compactLayout ? 300 : 340
+        width: window.chatListExpanded ? targetWidth : 0
+        opacity: window.chatListExpanded ? 1.0 : 0.0
+        visible: width > 0 || opacity > 0
         z: 5
+
+        Behavior on width {
+          NumberAnimation {
+            duration: 250
+            easing.type: Easing.OutCubic
+          }
+        }
+
+        Behavior on opacity {
+          NumberAnimation {
+            duration: 200
+            easing.type: Easing.OutCubic
+          }
+        }
+
+        Behavior on anchors.leftMargin {
+          NumberAnimation {
+            duration: 250
+            easing.type: Easing.OutCubic
+          }
+        }
 
         ChatList {
           id: chatListPane
-          anchors.fill: parent
+          width: chatListReservedArea.targetWidth
+          height: parent.height
           chatModel: chatListModel
           selectedChatId: window.selectedChatId
 
@@ -824,7 +848,7 @@ ApplicationWindow {
         id: conversationReservedArea
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.left: chatListReservedArea.visible ? chatListReservedArea.right : sidebarReservedArea.right
+        anchors.left: chatListReservedArea.right
         anchors.right: parent.right
         anchors.topMargin: 10
         anchors.bottomMargin: 10

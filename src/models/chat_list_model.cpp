@@ -1,4 +1,5 @@
 #include "chat_list_model.h"
+#include "chat_organization_manager.h"
 
 #include <QHash>
 #include <QVariantMap>
@@ -55,6 +56,9 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const {
   case IsOnlineRole:
     return chat.isOnline;
 
+  case FolderNamesRole:
+    return m_orgManager ? m_orgManager->getChatFolderNames(chat.id) : QStringList();
+
   default:
     return {};
   }
@@ -73,8 +77,35 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
   roles[UnreadCountRole] = "unreadCount";
   roles[StatusTextRole] = "statusText";
   roles[IsOnlineRole] = "isOnline";
+  roles[FolderNamesRole] = "folderNames";
 
   return roles;
+}
+
+void ChatListModel::setOrganizationManager(ChatOrganizationManager *manager) {
+  if (m_orgManager == manager) {
+    return;
+  }
+
+  if (m_orgManager) {
+    disconnect(m_orgManager, nullptr, this, nullptr);
+  }
+
+  m_orgManager = manager;
+
+  if (m_orgManager) {
+    connect(m_orgManager, &ChatOrganizationManager::activeFolderIdChanged,
+            this, &ChatListModel::refreshFilter);
+    connect(m_orgManager, &ChatOrganizationManager::folderContentsChanged,
+            this, &ChatListModel::refreshFilter);
+  }
+
+  emit organizationManagerChanged();
+  updateFilter();
+}
+
+void ChatListModel::refreshFilter() {
+  updateFilter();
 }
 
 QString ChatListModel::filterText() const { return m_filterText; }
@@ -98,6 +129,11 @@ void ChatListModel::updateFilter() {
   const QString query = m_filterText.trimmed();
   for (int i = 0; i < m_chats.size(); ++i) {
     const Chat &chat = m_chats.at(i);
+
+    // Folder filter check
+    if (m_orgManager && !m_orgManager->isChatInActiveFolder(chat.id)) {
+      continue;
+    }
 
     const bool matchesName = chat.name.contains(query, Qt::CaseInsensitive);
 

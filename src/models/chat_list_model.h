@@ -3,6 +3,7 @@
 #include <QString>
 #include <QVector>
 #include <QVariantMap>
+#include "chat_organization_manager.h"
 
 struct Chat {
   qint64 id;
@@ -23,6 +24,8 @@ class ChatListModel : public QAbstractListModel {
 
   Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY
                  filterTextChanged)
+  Q_PROPERTY(ChatOrganizationManager *organizationManager READ organizationManager WRITE setOrganizationManager NOTIFY organizationManagerChanged)
+
 public:
   enum ChatRoles {
     IdRole = Qt::UserRole + 1,
@@ -34,7 +37,8 @@ public:
     UnreadCountRole,
     AvatarPathRole,
     StatusTextRole,
-    IsOnlineRole
+    IsOnlineRole,
+    FolderNamesRole
   };
 
   explicit ChatListModel(QObject *parent = nullptr);
@@ -49,8 +53,12 @@ public:
   QString filterText() const;
   void setFilterText(const QString &text);
 
+  ChatOrganizationManager *organizationManager() const { return m_orgManager; }
+  void setOrganizationManager(ChatOrganizationManager *manager);
+
   Q_INVOKABLE QVariantMap chatAt(int row) const;
   Q_INVOKABLE QVariantMap chatById(qint64 chatId) const;
+  Q_INVOKABLE void refreshFilter();
 
 public slots:
   void upsertChat(const QVariantMap &chat);
@@ -58,12 +66,14 @@ public slots:
 
 signals:
   void filterTextChanged();
+  void organizationManagerChanged();
 
 private:
   QVector<Chat> m_chats;
   QVector<int> m_filteredIndices;
 
   QString m_filterText;
+  ChatOrganizationManager *m_orgManager = nullptr;
 
   void updateFilter();
   int indexOfChat(qint64 chatId) const;
