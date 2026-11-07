@@ -214,8 +214,51 @@ Item {
     property string targetFolderName: ""
     property string targetFolderIcon: ""
 
+    background: Item {
+      implicitWidth: 150
+      Rectangle {
+        anchors.fill: folderMenuGlass
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: folderMenuGlass.radius + 1
+        color: Qt.rgba(0, 0, 0, 0.22)
+        z: -1
+      }
+      Rectangle {
+        id: folderMenuGlass
+        anchors.fill: parent
+        radius: 12
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+        border.color: Theme.divider
+        border.width: 1
+
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: 11
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
+          border.width: 1
+        }
+      }
+    }
+
     MenuItem {
       text: "Delete Folder"
+      contentItem: Text {
+        text: parent.text
+        color: Theme.accentText
+        font.pixelSize: 13
+        verticalAlignment: Text.AlignVCenter
+        leftPadding: 12
+        rightPadding: 12
+      }
+      background: Rectangle {
+        color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+        radius: 8
+      }
       onTriggered: {
         root.organizationManager.deleteFolder(folderContextMenu.targetFolderId)
       }

@@ -317,8 +317,51 @@ Item {
         property var targetChatId: 0
         property string targetChatName: ""
 
+        background: Item {
+          implicitWidth: 160
+          Rectangle {
+            anchors.fill: menuGlass
+            anchors.topMargin: 2
+            anchors.bottomMargin: -2
+            anchors.leftMargin: -1
+            anchors.rightMargin: -1
+            radius: menuGlass.radius + 1
+            color: Qt.rgba(0, 0, 0, 0.22)
+            z: -1
+          }
+          Rectangle {
+            id: menuGlass
+            anchors.fill: parent
+            radius: 12
+            color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+            border.color: Theme.divider
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 11
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, 0.08)
+              border.width: 1
+            }
+          }
+        }
+
         MenuItem {
           text: "Move to Folder..."
+          contentItem: Text {
+            text: parent.text
+            color: Theme.primaryText
+            font.pixelSize: 13
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 12
+            rightPadding: 12
+          }
+          background: Rectangle {
+            color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+            radius: 8
+          }
           onTriggered: {
             manageFoldersDialog.chatId = chatContextMenu.targetChatId
             manageFoldersDialog.chatName = chatContextMenu.targetChatName

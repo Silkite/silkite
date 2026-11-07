@@ -374,7 +374,14 @@ Item {
           })
         }
 
-        // Smooth and accelerated mouse wheel scrolling leveraging native kinetic physics
+        NumberAnimation {
+          id: messageScrollAnim
+          target: messageListView
+          property: "contentY"
+          duration: 180
+          easing.type: Easing.OutCubic
+        }
+
         WheelHandler {
           id: messageWheelHandler
           target: null
@@ -382,17 +389,21 @@ Item {
           onWheel: (event) => {
             if (event.angleDelta.y === 0) return
 
-            // Native flick velocity: positive flick() moves content downwards (scroll up), negative moves up (scroll down)
-            var stepVelocity = (event.angleDelta.y / 120.0) * 1400.0
-            var currentV = messageListView.flickingVertically ? messageListView.verticalVelocity : 0
-            var targetVelocity = currentV + stepVelocity
+            // Standard notch gives 120 units. Smoothly step contentY.
+            var step = (event.angleDelta.y / 120.0) * 120.0
 
-            // Clamp velocity to ListView's maximumFlickVelocity
-            var maxV = messageListView.maximumFlickVelocity
-            if (targetVelocity > maxV) targetVelocity = maxV
-            else if (targetVelocity < -maxV) targetVelocity = -maxV
+            // Bound checking:
+            var minY = messageListView.originY - messageListView.topMargin
+            var maxY = Math.max(minY, messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin)
 
-            messageListView.flick(0, targetVelocity)
+            var startY = messageScrollAnim.running ? messageScrollAnim.to : messageListView.contentY
+            var targetY = Math.max(minY, Math.min(startY - step, maxY))
+
+            messageScrollAnim.stop()
+            messageScrollAnim.from = messageListView.contentY
+            messageScrollAnim.to = targetY
+            messageScrollAnim.start()
+
             event.accepted = true
           }
         }
@@ -1616,12 +1627,35 @@ Item {
     property bool canCopyText: textToCopy.trim() !== ""
     property bool canCopyMedia: mediaPathToCopy !== ""
 
-    background: Rectangle {
+    background: Item {
       implicitWidth: 168
-      color: Theme.elevatedBackground
-      radius: 8
-      border.color: Theme.divider
-      border.width: 1
+      Rectangle {
+        anchors.fill: msgMenuGlass
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: msgMenuGlass.radius + 1
+        color: Qt.rgba(0, 0, 0, 0.22)
+        z: -1
+      }
+      Rectangle {
+        id: msgMenuGlass
+        anchors.fill: parent
+        radius: 12
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+        border.color: Theme.divider
+        border.width: 1
+
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: 11
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
+          border.width: 1
+        }
+      }
     }
 
     MenuItem {

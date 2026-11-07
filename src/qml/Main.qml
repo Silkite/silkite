@@ -11,6 +11,50 @@ ApplicationWindow {
     source: "qrc:/qt/qml/Silkite/assets/fonts/Fredoka-Variable.ttf"
   }
 
+  // Global ToolTip aesthetic styling following single-layer elevation and theme
+  ToolTip.toolTip.contentItem: Text {
+    text: ToolTip.toolTip.text
+    font.family: fredokaFont.name
+    font.pixelSize: 12
+    font.weight: Font.Medium
+    color: Theme.accentText
+  }
+
+  ToolTip.toolTip.background: Item {
+    implicitHeight: 28
+    implicitWidth: 60
+
+    // Contact/ambient shadow
+    Rectangle {
+      anchors.fill: tipGlass
+      anchors.topMargin: 2
+      anchors.bottomMargin: -2
+      anchors.leftMargin: -1
+      anchors.rightMargin: -1
+      radius: tipGlass.radius + 1
+      color: Qt.rgba(0, 0, 0, 0.25)
+      z: -1
+    }
+
+    Rectangle {
+      id: tipGlass
+      anchors.fill: parent
+      radius: 8
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+      border.color: Theme.divider
+      border.width: 1
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: 7
+        color: "transparent"
+        border.color: Qt.rgba(1, 1, 1, 0.12)
+        border.width: 1
+      }
+    }
+  }
+
   visible: true
 
   width: 1200
@@ -320,6 +364,49 @@ ApplicationWindow {
                 border.width: 1
               }
             }
+            popup: Popup {
+              y: countryBox.height + 6
+              width: Math.max(countryBox.width, 180)
+              implicitHeight: contentItem.implicitHeight + 12
+              padding: 6
+
+              background: Item {
+                Rectangle {
+                  anchors.fill: popupGlass
+                  anchors.topMargin: 2
+                  anchors.bottomMargin: -2
+                  anchors.leftMargin: -1
+                  anchors.rightMargin: -1
+                  radius: popupGlass.radius + 1
+                  color: Qt.rgba(0, 0, 0, 0.22)
+                  z: -1
+                }
+                Rectangle {
+                  id: popupGlass
+                  anchors.fill: parent
+                  radius: 12
+                  color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+                  border.color: Theme.divider
+                  border.width: 1
+                  Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: 11
+                    color: "transparent"
+                    border.color: Qt.rgba(1, 1, 1, 0.1)
+                    border.width: 1
+                  }
+                }
+              }
+
+              contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: countryBox.popup.visible ? countryBox.delegateModel : null
+                currentIndex: countryBox.highlightedIndex
+              }
+            }
+
             delegate: ItemDelegate {
               width: countryBox.width
               text: modelData.flag + "  " + modelData.name + "  " + modelData.code
@@ -330,8 +417,8 @@ ApplicationWindow {
                 elide: Text.ElideRight
               }
               background: Rectangle {
-                color: highlighted ? Theme.accent : Theme.controlBackground
-                radius: 9
+                color: highlighted ? Theme.accent : "transparent"
+                radius: 8
               }
             }
             onActivated: {
@@ -535,19 +622,33 @@ ApplicationWindow {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    background: Rectangle {
-      radius: 18
-      color: Theme.windowBackground
-      border.color: Theme.divider
-      border.width: 1
-
+    background: Item {
       Rectangle {
+        anchors.fill: settingsGlass
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: settingsGlass.radius + 1
+        color: Qt.rgba(0, 0, 0, 0.22)
+        z: -1
+      }
+      Rectangle {
+        id: settingsGlass
         anchors.fill: parent
-        anchors.margins: 1
-        radius: 17
-        color: "transparent"
-        border.color: Qt.rgba(1, 1, 1, 0.08)
+        radius: 18
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+        border.color: Theme.divider
         border.width: 1
+
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: 17
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
+          border.width: 1
+        }
       }
     }
 
@@ -579,9 +680,93 @@ ApplicationWindow {
       ComboBox {
         id: themeSelector
         Layout.fillWidth: true
+        Layout.preferredHeight: 40
         model: Theme.availableThemes
         currentIndex: Math.max(0, model.indexOf(Theme.currentTheme))
         onActivated: Theme.selectTheme(currentText)
+
+        contentItem: Label {
+          leftPadding: 14
+          text: themeSelector.displayText
+          color: Theme.primaryText
+          verticalAlignment: Text.AlignVCenter
+          font.pixelSize: 14
+        }
+
+        background: Rectangle {
+          radius: 12
+          color: Theme.controlBackground
+          border.color: themeSelector.activeFocus ? Theme.accent : Theme.divider
+          border.width: 1
+
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: 1
+          }
+        }
+
+        popup: Popup {
+          y: themeSelector.height + 6
+          width: themeSelector.width
+          implicitHeight: Math.min(240, contentItem.implicitHeight + 12)
+          padding: 6
+
+          background: Item {
+            Rectangle {
+              anchors.fill: themePopupGlass
+              anchors.topMargin: 2
+              anchors.bottomMargin: -2
+              anchors.leftMargin: -1
+              anchors.rightMargin: -1
+              radius: themePopupGlass.radius + 1
+              color: Qt.rgba(0, 0, 0, 0.22)
+              z: -1
+            }
+            Rectangle {
+              id: themePopupGlass
+              anchors.fill: parent
+              radius: 12
+              color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+              border.color: Theme.divider
+              border.width: 1
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.width: 1
+              }
+            }
+          }
+
+          contentItem: ListView {
+            clip: true
+            implicitHeight: contentHeight
+            model: themeSelector.popup.visible ? themeSelector.delegateModel : null
+            currentIndex: themeSelector.highlightedIndex
+          }
+        }
+
+        delegate: ItemDelegate {
+          width: themeSelector.width
+          text: modelData
+          contentItem: Label {
+            text: modelData
+            color: highlighted ? Theme.accentText : Theme.primaryText
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 8
+            font.pixelSize: 14
+          }
+          background: Rectangle {
+            color: highlighted ? Theme.accent : "transparent"
+            radius: 8
+          }
+        }
       }
 
       Label {
@@ -652,6 +837,49 @@ ApplicationWindow {
         border.width: 1
       }
     }
+    popup: Popup {
+      y: globalThemeSelector.height + 6
+      width: globalThemeSelector.width
+      implicitHeight: Math.min(240, contentItem.implicitHeight + 12)
+      padding: 6
+
+      background: Item {
+        Rectangle {
+          anchors.fill: globalPopupGlass
+          anchors.topMargin: 2
+          anchors.bottomMargin: -2
+          anchors.leftMargin: -1
+          anchors.rightMargin: -1
+          radius: globalPopupGlass.radius + 1
+          color: Qt.rgba(0, 0, 0, 0.22)
+          z: -1
+        }
+        Rectangle {
+          id: globalPopupGlass
+          anchors.fill: parent
+          radius: 12
+          color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
+          border.color: Theme.divider
+          border.width: 1
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 11
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.1)
+            border.width: 1
+          }
+        }
+      }
+
+      contentItem: ListView {
+        clip: true
+        implicitHeight: contentHeight
+        model: globalThemeSelector.popup.visible ? globalThemeSelector.delegateModel : null
+        currentIndex: globalThemeSelector.highlightedIndex
+      }
+    }
+
     delegate: ItemDelegate {
       width: globalThemeSelector.width
       text: modelData
@@ -659,10 +887,12 @@ ApplicationWindow {
         text: modelData
         color: highlighted ? Theme.accentText : Theme.primaryText
         verticalAlignment: Text.AlignVCenter
+        leftPadding: 8
+        font.pixelSize: 13
       }
       background: Rectangle {
         radius: 8
-        color: highlighted ? Theme.accent : Theme.controlBackground
+        color: highlighted ? Theme.accent : "transparent"
       }
     }
   }
