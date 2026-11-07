@@ -40,6 +40,7 @@ public:
   Q_INVOKABLE void sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void viewMessage(qint64 chatId, qint64 messageId);
+  Q_INVOKABLE void toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen);
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;

@@ -27,6 +27,7 @@ public:
     ReplyToMessageIdRole,
     ReplyTextRole,
     ReplySenderRole,
+    ReactionsRole,
     ModelDataRole // Returns the full QVariantMap for backwards compatibility
   };
   Q_ENUM(MessageRoles)
@@ -45,6 +46,8 @@ public:
   void replaceMessageId(qint64 oldId, const QVariantMap &message);
   void updateReadOutbox(qint64 lastReadId);
   void updateMessageFile(qint64 messageId, const QString &filePath);
+  void updateMessageReactions(qint64 messageId, const QVariantList &reactions);
+  Q_INVOKABLE void toggleReactionOptimistic(qint64 messageId, const QString &emoji);
   void clear();
 
   Q_INVOKABLE QVariantMap get(int index) const;

@@ -24,6 +24,7 @@ public:
   void sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId = 0, const QString &quoteText = QString());
   void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   void viewMessage(qint64 chatId, qint64 messageId);
+  void toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen);
 
 protected:
   void run() override;
@@ -43,9 +44,10 @@ signals:
   void chatReadOutboxUpdated(qint64 chatId, qint64 lastReadOutboxMessageId);
   void chatTyping(qint64 chatId, bool active);
   void messageFileUpdated(qint64 chatId, qint64 messageId, const QString &filePath);
+  void messageReactionsUpdated(qint64 chatId, qint64 messageId, const QVariantList &reactions);
 
 private:
-  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, SendMedia, ViewMessage };
+  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, SendMedia, ViewMessage, AddReaction, RemoveReaction };
   struct Command {
     CommandType type;
     QString value;

@@ -127,6 +127,31 @@ Item {
   // Active reply target state
   property var activeReply: null // { messageId, sender, text }
 
+  // Reaction picker popup state
+  property var activeReactionMessageId: 0
+  property real reactionPickerX: 0
+  property real reactionPickerY: 0
+  property bool reactionPickerVisible: false
+
+  function openReactionPicker(msgId, globalPos, isOutgoing, bubbleWidth) {
+    activeReactionMessageId = msgId
+    var pos = messagesArea.mapFromItem(null, globalPos.x, globalPos.y)
+    var pickerW = 224
+    var pickerH = 46
+    if (isOutgoing) {
+      reactionPickerX = Math.max(8, pos.x - pickerW - 8)
+    } else {
+      reactionPickerX = Math.min(messagesArea.width - pickerW - 8, pos.x + bubbleWidth + 8)
+    }
+    reactionPickerY = Math.max(8, Math.min(messagesArea.height - pickerH - 8, pos.y - 6))
+    reactionPickerVisible = true
+  }
+
+  function closeReactionPicker() {
+    reactionPickerVisible = false
+    activeReactionMessageId = 0
+  }
+
   function setReplyTarget(msgId, senderName, previewText) {
     activeReply = {
       messageId: msgId,
@@ -202,6 +227,7 @@ Item {
   signal startMessaging()
   signal sendMessageRequested(string text, var replyToMessageId, string quoteText)
   signal sendMediaRequested(string filePath, string caption, var replyToMessageId, string quoteText)
+  signal toggleReactionRequested(var messageId, string emoji, bool isChosen)
 
   // Outer soft ambient elevation shadow
   Rectangle {
@@ -528,7 +554,7 @@ Item {
           required property var modelData
           readonly property var mData: modelData || ({})
           width: messageListView.width
-          height: bubble.height + 6
+          height: bubble.height + (reactionsRow.visible ? (reactionsRow.height + 4) : 0) + 6
 
           readonly property bool isOutgoing: Boolean(mData.outgoing)
           readonly property bool hasReply: (mData.replyToMessageId && mData.replyToMessageId > 0) || (mData.replyText !== undefined && mData.replyText !== "")
@@ -1402,8 +1428,77 @@ Item {
                       mediaViewer.show(msgDelegate.mData.filePath, msgDelegate.isVideo ? "video" : (msgDelegate.isAnimation ? "animation" : "photo"))
                     }
                   } else {
-                    // Left-click on text message bubble presents options to reply or act
-                    messageContextMenu.popup()
+                    // Left-click on message bubble shows reaction picker pill beside the chat bubble
+                    var mapped = bubble.mapToItem(null, 0, 0)
+                    root.openReactionPicker(msgDelegate.mData.messageId || 0, mapped, msgDelegate.isOutgoing, bubble.width)
+                  }
+                }
+              }
+            }
+          }
+
+          // Message Reactions Badges Row (resting pills below bubble)
+          Row {
+            id: reactionsRow
+            z: 15
+            anchors.top: bubble.bottom
+            anchors.topMargin: 4
+            anchors.right: msgDelegate.isOutgoing ? bubble.right : undefined
+            anchors.left: msgDelegate.isOutgoing ? undefined : bubble.left
+            spacing: 4
+            visible: (msgDelegate.mData.reactions && msgDelegate.mData.reactions.length > 0)
+
+            Repeater {
+              model: msgDelegate.mData.reactions || []
+              delegate: Rectangle {
+                id: reactionBadge
+                required property var modelData
+                readonly property var rItem: modelData || ({})
+                readonly property bool chosen: Boolean(rItem.isChosen)
+
+                radius: 12
+                height: 24
+                width: badgeRow.implicitWidth + 14
+                color: chosen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Theme.elevatedBackground
+                border.width: 1
+                border.color: chosen ? Theme.accent : Theme.divider
+
+                Behavior on scale {
+                  NumberAnimation { duration: 180; easing.type: Easing.OutBack }
+                }
+                Behavior on color {
+                  ColorAnimation { duration: 150 }
+                }
+
+                Component.onCompleted: {
+                  scale = 0.5
+                  scale = 1.0
+                }
+
+                Row {
+                  id: badgeRow
+                  anchors.centerIn: parent
+                  spacing: 4
+                  Label {
+                    text: reactionBadge.rItem.emoji || ""
+                    font.pixelSize: 13
+                  }
+                  Label {
+                    text: reactionBadge.rItem.count ? reactionBadge.rItem.count.toString() : "1"
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    color: reactionBadge.chosen ? Theme.accent : Theme.secondaryText
+                    visible: text !== "0"
+                  }
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    reactionBadge.scale = 0.8
+                    reactionBadge.scale = 1.0
+                    root.toggleReactionRequested(msgDelegate.mData.messageId, reactionBadge.rItem.emoji, reactionBadge.chosen)
                   }
                 }
               }
@@ -1522,6 +1617,177 @@ Item {
               root.scrollToBottomSmoothly()
             }
           }
+        }
+      }
+
+      // Horizontal Pill-Shaped Reaction Picker Pop-up Box
+      Item {
+        id: reactionPickerPopup
+        z: 50
+        x: root.reactionPickerX
+        y: root.reactionPickerY
+        width: 224
+        height: 44
+        visible: opacity > 0
+        opacity: root.reactionPickerVisible ? 1.0 : 0.0
+
+        Behavior on opacity {
+          NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+
+        // Elevation soft shadow
+        Rectangle {
+          anchors.fill: pickerBackground
+          anchors.topMargin: 2
+          anchors.bottomMargin: -2
+          anchors.leftMargin: -1
+          anchors.rightMargin: -1
+          radius: pickerBackground.radius + 1
+          color: Qt.rgba(0, 0, 0, 0.32)
+          z: -1
+        }
+
+        Rectangle {
+          id: pickerBackground
+          anchors.fill: parent
+          radius: 22
+          color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+          border.color: Theme.divider
+          border.width: 1
+
+          // Inner highlight border
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 21
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.14)
+            border.width: 1
+          }
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 2
+
+            // Horizontally scrollable row showing 5 reactions visible at a time
+            Flickable {
+              id: reactionFlickable
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              contentWidth: emojiRow.implicitWidth
+              contentHeight: height
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+
+              Row {
+                id: emojiRow
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+
+                readonly property var emojis: [
+                  "👍", "❤️", "🔥", "😂", "👏", "🎉", "😍", "😢",
+                  "😮", "🙏", "🤩", "⚡", "💯", "🫡", "🤝", "🥳"
+                ]
+
+                Repeater {
+                  model: emojiRow.emojis
+                  delegate: Rectangle {
+                    required property var modelData
+                    readonly property string emojiChar: modelData
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: emojiMouse.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : "transparent"
+
+                    Behavior on scale {
+                      NumberAnimation { duration: 100 }
+                    }
+                    scale: emojiMouse.containsMouse ? 1.25 : 1.0
+
+                    Label {
+                      anchors.centerIn: parent
+                      text: emojiChar
+                      font.pixelSize: 20
+                    }
+
+                    MouseArea {
+                      id: emojiMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (root.activeReactionMessageId) {
+                          root.toggleReactionRequested(root.activeReactionMessageId, emojiChar, false)
+                        }
+                        root.closeReactionPicker()
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // Arrow button at the end to scroll/reveal more reactions
+            Rectangle {
+              Layout.preferredWidth: 28
+              Layout.preferredHeight: 28
+              radius: 14
+              color: arrowMouse.containsMouse ? Theme.accent : Qt.rgba(1, 1, 1, 0.08)
+
+              Behavior on color {
+                ColorAnimation { duration: 120 }
+              }
+
+              Image {
+                source: "qrc:/qt/qml/Silkite/assets/icons/arrow-down.svg"
+                anchors.centerIn: parent
+                width: 14
+                height: 14
+                rotation: reactionFlickable.atXEnd ? 90 : -90
+                fillMode: Image.PreserveAspectFit
+                sourceSize: Qt.size(14, 14)
+                layer.enabled: true
+                layer.effect: ColorOverlay {
+                  color: arrowMouse.containsMouse ? Theme.accentText : Theme.primaryText
+                }
+              }
+
+              MouseArea {
+                id: arrowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (reactionFlickable.atXEnd) {
+                    reactionFlickAnim.to = 0
+                  } else {
+                    reactionFlickAnim.to = Math.min(reactionFlickable.contentWidth - reactionFlickable.width, reactionFlickable.contentX + 110)
+                  }
+                  reactionFlickAnim.restart()
+                }
+              }
+
+              NumberAnimation {
+                id: reactionFlickAnim
+                target: reactionFlickable
+                property: "contentX"
+                duration: 200
+                easing.type: Easing.OutCubic
+              }
+            }
+          }
+        }
+      }
+
+      // Invisible backdrop to dismiss reaction picker when clicking outside
+      MouseArea {
+        anchors.fill: parent
+        z: 49
+        visible: root.reactionPickerVisible
+        onClicked: {
+          root.closeReactionPicker()
         }
       }
 

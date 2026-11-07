@@ -50,6 +50,8 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const {
     return msg.value(QStringLiteral("replyText"));
   case ReplySenderRole:
     return msg.value(QStringLiteral("replySender"));
+  case ReactionsRole:
+    return msg.value(QStringLiteral("reactions"));
   case ModelDataRole:
     return msg;
   default:
@@ -76,6 +78,7 @@ QHash<int, QByteArray> MessageListModel::roleNames() const {
   roles[ReplyToMessageIdRole] = "replyToMessageId";
   roles[ReplyTextRole] = "replyText";
   roles[ReplySenderRole] = "replySender";
+  roles[ReactionsRole] = "reactions";
   roles[ModelDataRole] = "modelData";
   return roles;
 }
@@ -149,6 +152,60 @@ void MessageListModel::updateMessageFile(qint64 messageId, const QString &filePa
     m_messages[idx][QStringLiteral("isDownloading")] = false;
     emit dataChanged(index(idx), index(idx), {FilePathRole, IsDownloadingRole, ModelDataRole});
   }
+}
+
+void MessageListModel::updateMessageReactions(qint64 messageId, const QVariantList &reactions) {
+  const int idx = findIndexById(messageId);
+  if (idx >= 0) {
+    m_messages[idx][QStringLiteral("reactions")] = reactions;
+    emit dataChanged(index(idx), index(idx), {ReactionsRole, ModelDataRole});
+  }
+}
+
+void MessageListModel::toggleReactionOptimistic(qint64 messageId, const QString &emoji) {
+  const int idx = findIndexById(messageId);
+  if (idx < 0) return;
+
+  QVariantList currentReactions = m_messages[idx].value(QStringLiteral("reactions")).toList();
+  bool found = false;
+  QVariantList nextReactions;
+
+  for (const auto &v : currentReactions) {
+    QVariantMap r = v.toMap();
+    if (r.value(QStringLiteral("emoji")).toString() == emoji) {
+      found = true;
+      bool wasChosen = r.value(QStringLiteral("isChosen")).toBool();
+      int count = r.value(QStringLiteral("count")).toInt();
+      if (wasChosen) {
+        // Toggle OFF
+        count = std::max(0, count - 1);
+        if (count > 0) {
+          r[QStringLiteral("isChosen")] = false;
+          r[QStringLiteral("count")] = count;
+          nextReactions.append(r);
+        }
+      } else {
+        // Toggle ON
+        r[QStringLiteral("isChosen")] = true;
+        r[QStringLiteral("count")] = count + 1;
+        nextReactions.append(r);
+      }
+    } else {
+      nextReactions.append(r);
+    }
+  }
+
+  if (!found) {
+    // New reaction added by user
+    QVariantMap newR;
+    newR[QStringLiteral("emoji")] = emoji;
+    newR[QStringLiteral("count")] = 1;
+    newR[QStringLiteral("isChosen")] = true;
+    nextReactions.append(newR);
+  }
+
+  m_messages[idx][QStringLiteral("reactions")] = nextReactions;
+  emit dataChanged(index(idx), index(idx), {ReactionsRole, ModelDataRole});
 }
 
 void MessageListModel::clear() {

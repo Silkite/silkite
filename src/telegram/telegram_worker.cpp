@@ -114,6 +114,23 @@ QString ensureGifConverted(const QString &sourcePath) {
   return sourcePath;
 }
 
+QVariantList parseReactions(const td::td_api::messageReactions *reactions) {
+  if (!reactions) return {};
+  QVariantList list;
+  for (const auto &r : reactions->reactions_) {
+    if (!r || !r->type_) continue;
+    if (r->type_->get_id() == td::td_api::reactionTypeEmoji::ID) {
+      auto *re = static_cast<const td::td_api::reactionTypeEmoji *>(r->type_.get());
+      QVariantMap item;
+      item["emoji"] = QString::fromStdString(re->emoji_);
+      item["count"] = r->total_count_;
+      item["isChosen"] = r->is_chosen_;
+      list.append(item);
+    }
+  }
+  return list;
+}
+
 QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownload) {
   fileIdToDownload = 0;
   if (!message) return {};
@@ -126,6 +143,11 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
   map["replyText"] = replyPreview(message);
   map["replySender"] = QString();
   map["replyToMessageId"] = qint64(0);
+  if (message->interaction_info_ && message->interaction_info_->reactions_) {
+    map["reactions"] = parseReactions(message->interaction_info_->reactions_.get());
+  } else {
+    map["reactions"] = QVariantList();
+  }
   if (message->reply_to_ && message->reply_to_->get_id() == td::td_api::messageReplyToMessage::ID) {
     auto *r = static_cast<const td::td_api::messageReplyToMessage *>(message->reply_to_.get());
     map["replyToMessageId"] = qint64(r->message_id_);
@@ -384,6 +406,9 @@ void TelegramWorker::sendMedia(qint64 chatId, const QString &filePath, const QSt
 void TelegramWorker::viewMessage(qint64 chatId, qint64 messageId) {
   enqueue({CommandType::ViewMessage, {}, chatId, messageId, {}});
 }
+void TelegramWorker::toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen) {
+  enqueue({isChosen ? CommandType::RemoveReaction : CommandType::AddReaction, emoji, chatId, messageId, {}});
+}
 
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
@@ -566,6 +591,24 @@ void TelegramWorker::run() {
               true
           ));
         }
+        if (command.type == CommandType::AddReaction) {
+          auto rType = td::td_api::make_object<td::td_api::reactionTypeEmoji>(command.value.toStdString());
+          send(activeClientId, td::td_api::make_object<td::td_api::addMessageReaction>(
+              command.chatId,
+              command.messageId,
+              std::move(rType),
+              false,
+              true
+          ));
+        }
+        if (command.type == CommandType::RemoveReaction) {
+          auto rType = td::td_api::make_object<td::td_api::reactionTypeEmoji>(command.value.toStdString());
+          send(activeClientId, td::td_api::make_object<td::td_api::removeMessageReaction>(
+              command.chatId,
+              command.messageId,
+              std::move(rType)
+          ));
+        }
         if (command.type == CommandType::QrLogin) {
           activeClientId = qrClientId;
           if (qrReady) {
@@ -733,6 +776,31 @@ void TelegramWorker::run() {
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadInbox::ID) { auto *u = static_cast<td::td_api::updateChatReadInbox *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"unreadCount", u->unread_count_}}); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadOutbox::ID) { auto *u = static_cast<td::td_api::updateChatReadOutbox *>(response.object.get()); lastReadOutbox.insert(u->chat_id_, u->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(u->chat_id_), qint64(u->last_read_outbox_message_id_)); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatAction::ID) { auto *u = static_cast<td::td_api::updateChatAction *>(response.object.get()); emit chatTyping(qint64(u->chat_id_), u->action_ && u->action_->get_id() == td::td_api::chatActionTyping::ID); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateMessageReactions::ID) {
+      auto *u = static_cast<td::td_api::updateMessageReactions *>(response.object.get());
+      QVariantList list;
+      for (const auto &r : u->reactions_) {
+        if (!r || !r->type_) continue;
+        if (r->type_->get_id() == td::td_api::reactionTypeEmoji::ID) {
+          auto *re = static_cast<const td::td_api::reactionTypeEmoji *>(r->type_.get());
+          QVariantMap item;
+          item["emoji"] = QString::fromStdString(re->emoji_);
+          item["count"] = r->total_count_;
+          item["isChosen"] = r->is_chosen_;
+          list.append(item);
+        }
+      }
+      emit messageReactionsUpdated(qint64(u->chat_id_), qint64(u->message_id_), list);
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateMessageInteractionInfo::ID) {
+      auto *u = static_cast<td::td_api::updateMessageInteractionInfo *>(response.object.get());
+      if (u->interaction_info_ && u->interaction_info_->reactions_) {
+        QVariantList list = parseReactions(u->interaction_info_->reactions_.get());
+        emit messageReactionsUpdated(qint64(u->chat_id_), qint64(u->message_id_), list);
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateNewMessage::ID) {
       auto *u = static_cast<td::td_api::updateNewMessage *>(response.object.get());
       if (u->message_) {

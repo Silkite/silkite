@@ -189,6 +189,21 @@ TelegramClient::TelegramClient(QObject *parent)
       emit conversationMessagesChanged();
     }
   });
+  connect(&m_worker, &TelegramWorker::messageReactionsUpdated, this, [this](qint64 chatId, qint64 messageId, const QVariantList &reactions) {
+    if (chatId != m_activeChatId) return;
+    bool changed = false;
+    for (QVariant &value : m_conversationMessages) {
+      QVariantMap message = value.toMap();
+      if (message.value("messageId").toLongLong() == messageId) {
+        message["reactions"] = reactions;
+        value = message;
+        changed = true;
+        break;
+      }
+    }
+    m_messageModel.updateMessageReactions(messageId, reactions);
+    if (changed) emit conversationMessagesChanged();
+  });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
             if (m_qrCodeLink != link) {
@@ -289,6 +304,14 @@ void TelegramClient::sendMedia(qint64 chatId, const QString &filePath, const QSt
 }
 void TelegramClient::viewMessage(qint64 chatId, qint64 messageId) {
   if (chatId != 0 && messageId != 0) m_worker.viewMessage(chatId, messageId);
+}
+void TelegramClient::toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen) {
+  if (chatId != 0 && messageId != 0 && !emoji.isEmpty()) {
+    // 1. Optimistically update local model immediately for instant UI feedback
+    m_messageModel.toggleReactionOptimistic(messageId, emoji);
+    // 2. Dispatch to TDLib worker
+    m_worker.toggleReaction(chatId, messageId, emoji, isChosen);
+  }
 }
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }

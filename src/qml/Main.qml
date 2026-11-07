@@ -1121,6 +1121,12 @@ ApplicationWindow {
               telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
             }
           }
+
+          onToggleReactionRequested: function(messageId, emoji, isChosen) {
+            if (window.selectedChatId && messageId) {
+              telegramClient.toggleReaction(window.selectedChatId, messageId, emoji, isChosen)
+            }
+          }
         }
       }
 
