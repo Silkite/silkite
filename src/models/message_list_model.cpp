@@ -52,6 +52,8 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const {
     return msg.value(QStringLiteral("replySender"));
   case ReactionsRole:
     return msg.value(QStringLiteral("reactions"));
+  case IsSingleEmojiRole:
+    return msg.value(QStringLiteral("isSingleEmoji"));
   case ModelDataRole:
     return msg;
   default:
@@ -79,6 +81,7 @@ QHash<int, QByteArray> MessageListModel::roleNames() const {
   roles[ReplyTextRole] = "replyText";
   roles[ReplySenderRole] = "replySender";
   roles[ReactionsRole] = "reactions";
+  roles[IsSingleEmojiRole] = "isSingleEmoji";
   roles[ModelDataRole] = "modelData";
   return roles;
 }

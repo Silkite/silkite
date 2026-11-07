@@ -28,6 +28,7 @@ public:
     ReplyTextRole,
     ReplySenderRole,
     ReactionsRole,
+    IsSingleEmojiRole,
     ModelDataRole // Returns the full QVariantMap for backwards compatibility
   };
   Q_ENUM(MessageRoles)

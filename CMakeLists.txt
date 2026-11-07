@@ -73,6 +73,10 @@ qt_add_qml_module(silkite
     assets/icons/panel-left.svg
     assets/icons/send.svg
     assets/icons/arrow-down.svg
+    assets/icons/emoji.svg
+    assets/icons/sticker.svg
+    assets/icons/gif.svg
+    assets/icons/attach.svg
     assets/fonts/Fredoka-Variable.ttf
     assets/fonts/Fredoka-OFL.txt
 )

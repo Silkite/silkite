@@ -152,6 +152,21 @@ Item {
     activeReactionMessageId = 0
   }
 
+  // Active composer panel popup state ("none", "emoji", "sticker", "gif")
+  property string activeComposerPopup: "none"
+
+  function toggleComposerPopup(popupName) {
+    if (activeComposerPopup === popupName) {
+      activeComposerPopup = "none"
+    } else {
+      activeComposerPopup = popupName
+    }
+  }
+
+  function closeComposerPopups() {
+    activeComposerPopup = "none"
+  }
+
   function setReplyTarget(msgId, senderName, previewText) {
     activeReply = {
       messageId: msgId,
@@ -558,17 +573,32 @@ Item {
 
           readonly property bool isOutgoing: Boolean(mData.outgoing)
           readonly property bool hasReply: (mData.replyToMessageId && mData.replyToMessageId > 0) || (mData.replyText !== undefined && mData.replyText !== "")
-          readonly property bool hasMedia: mData.mediaType !== undefined && mData.mediaType !== "none" && mData.mediaType !== ""
+          readonly property bool hasMedia: mData.mediaType !== undefined && mData.mediaType !== "none" && mData.mediaType !== "" && mData.mediaType !== "sticker"
           readonly property bool isVisualMedia: mData.mediaType === "photo" || mData.mediaType === "video" || mData.mediaType === "animation"
           readonly property bool isPhoto: mData.mediaType === "photo"
           readonly property bool isVideo: mData.mediaType === "video"
           readonly property bool isAnimation: mData.mediaType === "animation"
           readonly property bool isDoc: mData.mediaType === "document" || mData.mediaType === "audio"
-          readonly property bool hasCaption: Boolean(mData.caption && mData.caption.trim().length > 0)
-          readonly property bool isBorderlessMedia: isVisualMedia && !hasCaption && !hasReply
+          readonly property bool isSticker: mData.mediaType === "sticker"
+          readonly property bool isSingleEmoji: {
+            if (hasMedia || hasReply || isSticker) return false
+            if (mData.isSingleEmoji !== undefined) return Boolean(mData.isSingleEmoji)
+            // Client-side regex fallback in case of local/unsynced messages
+            var t = (mData.text || "").trim()
+            if (!t) return false
+            try {
+              return /^(\p{Emoji_Presentation}|\p{Extended_Pictographic}|\p{Emoji}\uFE0F)$/u.test(t)
+            } catch (e) {
+              return false
+            }
+          }
+          readonly property bool hasCaption: !isSticker && !isSingleEmoji && Boolean(mData.caption && mData.caption.trim().length > 0)
+          readonly property bool isBorderlessMedia: (isVisualMedia || isSticker || isSingleEmoji) && !hasCaption && !hasReply
 
-          // Target dimensions for photos, videos, and gifs based on aspect ratio
+          // Target dimensions for photos, videos, stickers, and gifs based on aspect ratio
           readonly property real targetMediaWidth: {
+            if (isSingleEmoji) return 100
+            if (isSticker) return 180
             if (!isVisualMedia) return 0
             var maxW = isAnimation
               ? Math.min(240, parent.width * 0.48)
@@ -599,6 +629,8 @@ Item {
           }
 
           readonly property real targetMediaHeight: {
+            if (isSingleEmoji) return 100
+            if (isSticker) return 180
             if (!isVisualMedia) return 0
             var maxH = isAnimation ? 220 : 360
             var minH = isAnimation ? 100 : 160
@@ -671,9 +703,9 @@ Item {
           }
 
           // Minimum pill width: base baseline width so compact bubbles don't collapse
-          readonly property real minBubbleWidth: isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 200 : (msgDelegate.isOutgoing ? 175 : 160)))
+          readonly property real minBubbleWidth: isSingleEmoji ? 100 : (isSticker ? 180 : (isVisualMedia ? targetMediaWidth : (isDoc ? 260 : (hasReply ? 200 : (msgDelegate.isOutgoing ? 175 : 160)))))
 
-          readonly property bool fitsSingleLine: !hasMedia && !hasReply && (inlineNeededWidth <= maxBubbleWidth)
+          readonly property bool fitsSingleLine: !isBorderlessMedia && !hasMedia && !hasReply && (inlineNeededWidth <= maxBubbleWidth)
 
           // Ambient Elevation Glow/Shadow layer 2 (wider, softer spread)
           Rectangle {
@@ -799,15 +831,97 @@ Item {
               anchors.fill: parent
               visible: msgDelegate.isBorderlessMedia
 
+              // Single Animated Emoji Mode
+              Item {
+                id: singleAnimatedEmojiBox
+                anchors.fill: parent
+                visible: msgDelegate.isSingleEmoji
+
+                Label {
+                  id: singleEmojiText
+                  anchors.centerIn: parent
+                  text: msgDelegate.mData.text || ""
+                  font.pixelSize: 72
+                  scale: 1.0
+
+                  Behavior on scale {
+                    NumberAnimation { duration: 180; easing.type: Easing.OutBack }
+                  }
+
+                  SequentialAnimation on y {
+                    loops: Animation.Infinite
+                    running: msgDelegate.isSingleEmoji
+                    PauseAnimation { duration: 2500 }
+                    NumberAnimation { from: 0; to: -10; duration: 250; easing.type: Easing.OutQuad }
+                    NumberAnimation { from: -10; to: 0; duration: 350; easing.type: Easing.OutBounce }
+                    PauseAnimation { duration: 1500 }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
+                    onEntered: singleEmojiText.scale = 1.3
+                    onExited: singleEmojiText.scale = 1.0
+                    onClicked: {
+                      singleEmojiText.scale = 1.6
+                      singleEmojiText.scale = 1.0
+                    }
+                  }
+                }
+
+                // Tiny timestamp pill at bottom-right of single emoji
+                Rectangle {
+                  anchors.right: parent.right
+                  anchors.bottom: parent.bottom
+                  radius: 8
+                  height: 16
+                  width: emojiTimeRow.implicitWidth + 8
+                  color: Qt.rgba(0, 0, 0, 0.45)
+
+                  Row {
+                    id: emojiTimeRow
+                    anchors.centerIn: parent
+                    spacing: 3
+                    Label {
+                      text: msgDelegate.mData.time || ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 9
+                    }
+                    Label {
+                      text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
+                      color: "#FFFFFF"
+                      font.pixelSize: 9
+                      visible: text.length > 0
+                    }
+                  }
+                }
+              }
+
               Item {
                 id: borderlessMediaBox
                 anchors.fill: parent
+                visible: !msgDelegate.isSingleEmoji
+
+                // Sticker Emoji Fallback (when .tgs/.webp file is loading or animated emoji sticker)
+                Label {
+                  anchors.centerIn: parent
+                  visible: msgDelegate.isSticker && (!msgDelegate.mData.filePath || msgDelegate.mData.filePath === "" || borderlessImage.status !== Image.Ready)
+                  text: (msgDelegate.mData.stickerEmoji && msgDelegate.mData.stickerEmoji !== "")
+                    ? msgDelegate.mData.stickerEmoji
+                    : ((msgDelegate.mData.caption && msgDelegate.mData.caption !== "") ? msgDelegate.mData.caption : ((msgDelegate.mData.text && msgDelegate.mData.text !== "Sticker" && msgDelegate.mData.text !== "Attachment") ? msgDelegate.mData.text : "🏷️"))
+                  font.pixelSize: 84
+                  scale: 1.0
+                  Behavior on scale {
+                    NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                  }
+                }
 
                 Image {
                   id: borderlessImage
                   anchors.fill: parent
                   source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
-                  fillMode: Image.PreserveAspectCrop
+                  fillMode: Image.PreserveAspectFit
                   asynchronous: true
                   smooth: true
                   visible: false
@@ -870,7 +984,7 @@ Item {
                 // Downloading / Loading state
                 Column {
                   anchors.centerIn: parent
-                  visible: msgDelegate.isAnimation ? (borderlessGif.status !== AnimatedImage.Ready) : (borderlessImage.status !== Image.Ready)
+                  visible: !msgDelegate.isSticker && (msgDelegate.isAnimation ? (borderlessGif.status !== AnimatedImage.Ready) : (borderlessImage.status !== Image.Ready))
                   spacing: 6
 
                   Rectangle {
@@ -1796,11 +1910,12 @@ Item {
   // Message composer
   Rectangle {
     id: messageComposer
+    z: 30
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
     height: root.hasConversation ? (composerCol.implicitHeight + 20) : 0
-    clip: true
+    clip: false
 
     color: "transparent"
 
@@ -1948,36 +2063,87 @@ Item {
       // Input row
       RowLayout {
         Layout.fillWidth: true
-        spacing: 10
+        spacing: 6
 
+        // Emojis Button
         ToolButton {
-          text: "+"
-          font.pixelSize: 22
+          id: emojiPickerBtn
           focusPolicy: Qt.NoFocus
-          implicitWidth: 42
-          implicitHeight: 42
-          onClicked: fileDialog.open()
-          contentItem: Label {
-            text: parent.text
-            color: parent.hovered ? Theme.accentText : Theme.primaryText
-            font.pixelSize: 24
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-          }
+          implicitWidth: 38
+          implicitHeight: 38
+          ToolTip.visible: hovered
+          ToolTip.text: "Emojis"
+          onClicked: root.toggleComposerPopup("emoji")
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/emoji.svg"
+          icon.width: 20
+          icon.height: 20
+          icon.color: (root.activeComposerPopup === "emoji" || hovered) ? Theme.accent : Theme.secondaryText
           background: Rectangle {
-            radius: 14
-            color: parent.hovered ? Theme.accent : Theme.controlBackground
-            border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : Theme.divider
+            radius: 12
+            color: (root.activeComposerPopup === "emoji") ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+            border.color: (root.activeComposerPopup === "emoji") ? Theme.accent : "transparent"
             border.width: 1
+          }
+        }
 
-            Rectangle {
-              anchors.fill: parent
-              anchors.margins: 1
-              radius: 13
-              color: "transparent"
-              border.color: Qt.rgba(1, 1, 1, parent.parent.hovered ? 0.35 : 0.08)
-              border.width: 1
-            }
+        // Stickers Button
+        ToolButton {
+          id: stickerPickerBtn
+          focusPolicy: Qt.NoFocus
+          implicitWidth: 38
+          implicitHeight: 38
+          ToolTip.visible: hovered
+          ToolTip.text: "Stickers"
+          onClicked: root.toggleComposerPopup("sticker")
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/sticker.svg"
+          icon.width: 20
+          icon.height: 20
+          icon.color: (root.activeComposerPopup === "sticker" || hovered) ? Theme.accent : Theme.secondaryText
+          background: Rectangle {
+            radius: 12
+            color: (root.activeComposerPopup === "sticker") ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+            border.color: (root.activeComposerPopup === "sticker") ? Theme.accent : "transparent"
+            border.width: 1
+          }
+        }
+
+        // GIFs Button
+        ToolButton {
+          id: gifPickerBtn
+          focusPolicy: Qt.NoFocus
+          implicitWidth: 38
+          implicitHeight: 38
+          ToolTip.visible: hovered
+          ToolTip.text: "GIFs"
+          onClicked: root.toggleComposerPopup("gif")
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/gif.svg"
+          icon.width: 20
+          icon.height: 20
+          icon.color: (root.activeComposerPopup === "gif" || hovered) ? Theme.accent : Theme.secondaryText
+          background: Rectangle {
+            radius: 12
+            color: (root.activeComposerPopup === "gif") ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+            border.color: (root.activeComposerPopup === "gif") ? Theme.accent : "transparent"
+            border.width: 1
+          }
+        }
+
+        // Attachment Button
+        ToolButton {
+          id: attachBtn
+          focusPolicy: Qt.NoFocus
+          implicitWidth: 38
+          implicitHeight: 38
+          ToolTip.visible: hovered
+          ToolTip.text: "Attach file"
+          onClicked: fileDialog.open()
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/attach.svg"
+          icon.width: 20
+          icon.height: 20
+          icon.color: parent.hovered ? Theme.accent : Theme.secondaryText
+          background: Rectangle {
+            radius: 12
+            color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
           }
         }
 
@@ -2077,6 +2243,395 @@ Item {
               color: "transparent"
               border.color: Qt.rgba(1, 1, 1, 0.35)
               border.width: 1
+            }
+          }
+        }
+      }
+    }
+
+    // === Emoji Pop-up Box (Above Emoji button) ===
+    Rectangle {
+      id: emojiBoxPopup
+      z: 60
+      anchors.bottom: composerCol.top
+      anchors.bottomMargin: 8
+      anchors.left: composerCol.left
+      width: Math.min(340, parent.width - 28)
+      height: 290
+      radius: 16
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+      border.color: Theme.divider
+      border.width: 1
+      visible: opacity > 0
+      opacity: root.activeComposerPopup === "emoji" ? 1.0 : 0.0
+
+      Behavior on opacity {
+        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+      }
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: 17
+        color: Qt.rgba(0, 0, 0, 0.32)
+        z: -1
+      }
+
+      ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        spacing: 8
+
+        RowLayout {
+          Layout.fillWidth: true
+          Label {
+            text: "All Emojis"
+            font.pixelSize: 13
+            font.bold: true
+            color: Theme.primaryText
+          }
+          Item { Layout.fillWidth: true }
+          ToolButton {
+            text: "✕"
+            font.pixelSize: 11
+            implicitWidth: 24
+            implicitHeight: 24
+            focusPolicy: Qt.NoFocus
+            onClicked: root.closeComposerPopups()
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+            }
+          }
+        }
+
+        ScrollView {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          clip: true
+
+          Grid {
+            columns: 8
+            spacing: 6
+            width: parent.width
+
+            readonly property var allEmojis: [
+              "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
+              "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰",
+              "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜",
+              "🤪", "🤨", "🧐", "🤓", "😎", "🤩", "🥳", "😏",
+              "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣",
+              "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠",
+              "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨",
+              "😰", "😥", "😓", "🤗", "🤔", "🤭", "🤫", "🤥",
+              "😶", "😐", "😑", "😬", "🙄", "😯", "😦", "😧",
+              "😮", "😲", "🥱", "😴", "🤤", "😪", "😵", "🤐",
+              "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕", "🤑",
+              "🤠", "😈", "👿", "👹", "👺", "🤡", "💩", "👻",
+              "💀", "☠️", "👽", "👾", "🤖", "🎃", "😺", "😸",
+              "👍", "👎", "👊", "✊", "🤛", "🤜", "🤞", "✌️",
+              "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆",
+              "👇", "☝️", "✋", "🤚", "🖐️", "🖖", "👋", "🤙",
+              "💪", "🦾", "🖕", "✍️", "🙏", "🤝", "💅", "🗣️",
+              "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍",
+              "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖",
+              "💘", "💝", "💟", "🔥", "✨", "⚡", "💥", "🎉",
+              "🎊", "🎈", "🎂", "🎁", "🏆", "🥇", "⭐", "🌟"
+            ]
+
+            Repeater {
+              model: parent.allEmojis
+              delegate: Rectangle {
+                required property var modelData
+                readonly property string charEmoji: modelData
+                width: 32
+                height: 32
+                radius: 6
+                color: itemMouse.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+
+                Label {
+                  anchors.centerIn: parent
+                  text: charEmoji
+                  font.pixelSize: 20
+                }
+
+                MouseArea {
+                  id: itemMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    messageInput.insert(messageInput.cursorPosition, charEmoji)
+                    messageInput.forceActiveFocus()
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // === Sticker Pop-up Box (Above Sticker button) ===
+    Rectangle {
+      id: stickerBoxPopup
+      z: 60
+      anchors.bottom: composerCol.top
+      anchors.bottomMargin: 8
+      anchors.left: composerCol.left
+      width: Math.min(360, parent.width - 28)
+      height: 310
+      radius: 16
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+      border.color: Theme.divider
+      border.width: 1
+      visible: opacity > 0
+      opacity: root.activeComposerPopup === "sticker" ? 1.0 : 0.0
+
+      Behavior on opacity {
+        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+      }
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: 17
+        color: Qt.rgba(0, 0, 0, 0.32)
+        z: -1
+      }
+
+      ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        spacing: 8
+
+        RowLayout {
+          Layout.fillWidth: true
+          Label {
+            text: "Popular Stickers"
+            font.pixelSize: 13
+            font.bold: true
+            color: Theme.primaryText
+          }
+          Item { Layout.fillWidth: true }
+          ToolButton {
+            text: "✕"
+            font.pixelSize: 11
+            implicitWidth: 24
+            implicitHeight: 24
+            focusPolicy: Qt.NoFocus
+            onClicked: root.closeComposerPopups()
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+            }
+          }
+        }
+
+        ScrollView {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          clip: true
+
+          Grid {
+            columns: 4
+            spacing: 12
+            width: parent.width
+
+            readonly property var stickerList: [
+              { emoji: "👋", title: "Wave" },
+              { emoji: "🎉", title: "Party" },
+              { emoji: "❤️", title: "Love" },
+              { emoji: "🔥", title: "Fire" },
+              { emoji: "😎", title: "Cool" },
+              { emoji: "🥳", title: "Celebrate" },
+              { emoji: "🚀", title: "Rocket" },
+              { emoji: "💯", title: "Hundred" },
+              { emoji: "👏", title: "Clap" },
+              { emoji: "⭐", title: "Star" },
+              { emoji: "🤩", title: "Starstruck" },
+              { emoji: "⚡", title: "Electric" }
+            ]
+
+            Repeater {
+              model: parent.stickerList
+              delegate: Rectangle {
+                required property var modelData
+                readonly property var sData: modelData
+                width: 68
+                height: 68
+                radius: 12
+                color: sMouse.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : Qt.rgba(1, 1, 1, 0.04)
+                border.color: sMouse.containsMouse ? Theme.accent : Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+
+                Behavior on scale {
+                  NumberAnimation { duration: 120 }
+                }
+                scale: sMouse.containsMouse ? 1.08 : 1.0
+
+                Column {
+                  anchors.centerIn: parent
+                  spacing: 2
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: sData.emoji
+                    font.pixelSize: 32
+                  }
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: sData.title
+                    font.pixelSize: 9
+                    color: Theme.secondaryText
+                  }
+                }
+
+                MouseArea {
+                  id: sMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+                    var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+                    root.sendMessageRequested(sData.emoji, replyId, quoteText)
+                    root.clearReplyTarget()
+                    root.closeComposerPopups()
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // === GIF Pop-up Box (Above GIF button) ===
+    Rectangle {
+      id: gifBoxPopup
+      z: 60
+      anchors.bottom: composerCol.top
+      anchors.bottomMargin: 8
+      anchors.left: composerCol.left
+      width: Math.min(360, parent.width - 28)
+      height: 280
+      radius: 16
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+      border.color: Theme.divider
+      border.width: 1
+      visible: opacity > 0
+      opacity: root.activeComposerPopup === "gif" ? 1.0 : 0.0
+
+      Behavior on opacity {
+        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+      }
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: 17
+        color: Qt.rgba(0, 0, 0, 0.32)
+        z: -1
+      }
+
+      ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        spacing: 8
+
+        RowLayout {
+          Layout.fillWidth: true
+          Label {
+            text: "GIFs"
+            font.pixelSize: 13
+            font.bold: true
+            color: Theme.primaryText
+          }
+          Item { Layout.fillWidth: true }
+          ToolButton {
+            text: "✕"
+            font.pixelSize: 11
+            implicitWidth: 24
+            implicitHeight: 24
+            focusPolicy: Qt.NoFocus
+            onClicked: root.closeComposerPopups()
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+            }
+          }
+        }
+
+        ScrollView {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          clip: true
+
+          Grid {
+            columns: 3
+            spacing: 8
+            width: parent.width
+
+            readonly property var gifCategories: [
+              { tag: "Trending", icon: "🔥" },
+              { tag: "Happy", icon: "😄" },
+              { tag: "Sad", icon: "😢" },
+              { tag: "Dancing", icon: "💃" },
+              { tag: "Confused", icon: "🤔" },
+              { tag: "Party", icon: "🥳" }
+            ]
+
+            Repeater {
+              model: parent.gifCategories
+              delegate: Rectangle {
+                required property var modelData
+                width: 96
+                height: 72
+                radius: 10
+                color: gMouse.containsMouse ? Theme.accent : Qt.rgba(1, 1, 1, 0.06)
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.width: 1
+
+                Column {
+                  anchors.centerIn: parent
+                  spacing: 4
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.icon
+                    font.pixelSize: 24
+                  }
+                  Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: modelData.tag
+                    font.pixelSize: 11
+                    color: gMouse.containsMouse ? Theme.accentText : Theme.primaryText
+                    font.weight: Font.DemiBold
+                  }
+                }
+
+                MouseArea {
+                  id: gMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
+                    var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+                    root.sendMessageRequested(modelData.icon, replyId, quoteText)
+                    root.clearReplyTarget()
+                    root.closeComposerPopups()
+                  }
+                }
+              }
             }
           }
         }

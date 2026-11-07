@@ -66,6 +66,20 @@ QString preview(const td::td_api::message *message) {
   if (contentId == td::td_api::messageAnimation::ID) return QStringLiteral("GIF");
   if (contentId == td::td_api::messageAudio::ID) return QStringLiteral("Audio");
   if (contentId == td::td_api::messageVoiceNote::ID) return QStringLiteral("Voice Message");
+  if (contentId == td::td_api::messageSticker::ID) {
+    auto *s = static_cast<const td::td_api::messageSticker *>(message->content_.get());
+    if (s->sticker_ && !s->sticker_->emoji_.empty()) {
+      return QString::fromStdString(s->sticker_->emoji_) + QStringLiteral(" Sticker");
+    }
+    return QStringLiteral("Sticker");
+  }
+  if (contentId == td::td_api::messageAnimatedEmoji::ID) {
+    auto *ae = static_cast<const td::td_api::messageAnimatedEmoji *>(message->content_.get());
+    if (!ae->emoji_.empty()) {
+      return QString::fromStdString(ae->emoji_);
+    }
+    return QStringLiteral("Emoji");
+  }
   return QStringLiteral("Attachment");
 }
 
@@ -86,6 +100,20 @@ QString replyPreview(const td::td_api::message *message) {
       if (cid == td::td_api::messageAnimation::ID) return QStringLiteral("GIF");
       if (cid == td::td_api::messageAudio::ID) return QStringLiteral("Audio");
       if (cid == td::td_api::messageVoiceNote::ID) return QStringLiteral("Voice Message");
+      if (cid == td::td_api::messageSticker::ID) {
+        auto *s = static_cast<const td::td_api::messageSticker *>(reply->content_.get());
+        if (s->sticker_ && !s->sticker_->emoji_.empty()) {
+          return QString::fromStdString(s->sticker_->emoji_) + QStringLiteral(" Sticker");
+        }
+        return QStringLiteral("Sticker");
+      }
+      if (cid == td::td_api::messageAnimatedEmoji::ID) {
+        auto *ae = static_cast<const td::td_api::messageAnimatedEmoji *>(reply->content_.get());
+        if (!ae->emoji_.empty()) {
+          return QString::fromStdString(ae->emoji_);
+        }
+        return QStringLiteral("Emoji");
+      }
       return QStringLiteral("Attachment");
     }
   }
@@ -180,7 +208,79 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
 
   if (contentId == td::td_api::messageText::ID) {
     auto *t = static_cast<const td::td_api::messageText *>(message->content_.get());
-    map["text"] = QString::fromStdString(t->text_->text_);
+    const QString txt = QString::fromStdString(t->text_->text_);
+    map["text"] = txt;
+    // Check if message consists of exactly a single emoji (supports standard emoji & extended pictographs)
+    static const QRegularExpression singleEmojiRegex(QStringLiteral("^(\\p{Emoji_Presentation}|\\p{Extended_Pictographic}|\\p{Emoji}\\x{FE0F})$"));
+    map["isSingleEmoji"] = singleEmojiRegex.match(txt.trimmed()).hasMatch();
+  } else if (contentId == td::td_api::messageAnimatedEmoji::ID) {
+    auto *ae = static_cast<const td::td_api::messageAnimatedEmoji *>(message->content_.get());
+    const QString emo = QString::fromStdString(ae->emoji_);
+    map["text"] = emo;
+    map["isSingleEmoji"] = true;
+    map["mediaType"] = QStringLiteral("none");
+    if (ae->animated_emoji_ && ae->animated_emoji_->sticker_) {
+      const auto &stk = ae->animated_emoji_->sticker_;
+      map["stickerEmoji"] = emo;
+      map["mediaWidth"] = ae->animated_emoji_->sticker_width_ > 0 ? ae->animated_emoji_->sticker_width_ : stk->width_;
+      map["mediaHeight"] = ae->animated_emoji_->sticker_height_ > 0 ? ae->animated_emoji_->sticker_height_ : stk->height_;
+      if (stk->thumbnail_ && stk->thumbnail_->file_) {
+        const int tfid = stk->thumbnail_->file_->id_;
+        const QString tPath = stk->thumbnail_->file_->local_ ? QString::fromStdString(stk->thumbnail_->file_->local_->path_) : QString();
+        if (!tPath.isEmpty() && QFile::exists(tPath)) {
+          map["filePath"] = tPath;
+        } else if (tfid != 0) {
+          fileIdToDownload = tfid;
+          map["isDownloading"] = true;
+        }
+      }
+      if (stk->sticker_) {
+        const int fid = stk->sticker_->id_;
+        map["fileId"] = fid;
+        const QString localPath = stk->sticker_->local_ ? QString::fromStdString(stk->sticker_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (stk->sticker_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = localPath;
+          map["isDownloading"] = false;
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
+  } else if (contentId == td::td_api::messageSticker::ID) {
+    auto *s = static_cast<const td::td_api::messageSticker *>(message->content_.get());
+    map["mediaType"] = QStringLiteral("sticker");
+    if (s->sticker_) {
+      map["mediaWidth"] = s->sticker_->width_;
+      map["mediaHeight"] = s->sticker_->height_;
+      if (!s->sticker_->emoji_.empty()) {
+        const QString sEmoji = QString::fromStdString(s->sticker_->emoji_);
+        map["stickerEmoji"] = sEmoji;
+        map["text"] = sEmoji;
+      }
+      if (s->sticker_->thumbnail_ && s->sticker_->thumbnail_->file_) {
+        const int tfid = s->sticker_->thumbnail_->file_->id_;
+        const QString tPath = s->sticker_->thumbnail_->file_->local_ ? QString::fromStdString(s->sticker_->thumbnail_->file_->local_->path_) : QString();
+        if (!tPath.isEmpty() && QFile::exists(tPath)) {
+          map["filePath"] = tPath;
+        } else if (tfid != 0) {
+          fileIdToDownload = tfid;
+          map["isDownloading"] = true;
+        }
+      }
+      if (s->sticker_->sticker_) {
+        const int fid = s->sticker_->sticker_->id_;
+        map["fileId"] = fid;
+        const QString localPath = s->sticker_->sticker_->local_ ? QString::fromStdString(s->sticker_->sticker_->local_->path_) : QString();
+        if (!localPath.isEmpty() && (s->sticker_->sticker_->local_->is_downloading_completed_ || QFile::exists(localPath))) {
+          map["filePath"] = localPath;
+          map["isDownloading"] = false;
+        } else {
+          fileIdToDownload = fid;
+          map["isDownloading"] = true;
+        }
+      }
+    }
   } else if (contentId == td::td_api::messagePhoto::ID) {
     auto *p = static_cast<const td::td_api::messagePhoto *>(message->content_.get());
     map["mediaType"] = QStringLiteral("photo");
