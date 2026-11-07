@@ -1087,6 +1087,7 @@ ApplicationWindow {
 
         ConversationPanel {
           anchors.fill: parent
+          chatId: window.selectedChatId || 0
           chatName: window.selectedChat.name || ""
           chatInitials: window.selectedChat.initials || "?"
           avatarColor: window.selectedChat.avatarColor || "#526C8A"

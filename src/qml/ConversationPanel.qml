@@ -8,6 +8,7 @@ import Qt5Compat.GraphicalEffects
 Item {
   id: root
 
+  property var chatId: 0
   property string chatName: ""
   property string chatInitials: "?"
   property string avatarColor: "#526C8A"
@@ -18,13 +19,96 @@ Item {
   property var messages: []
   property bool typing: false
 
-  onMessagesChanged: {
-    // Whenever messages list changes (e.g. read status update, send/receive), keep position at the bottom
+  // Pill notification button tracking unread/new messages arriving while scrolled up
+  property int unreadIncomingCount: 0
+  property int previousMessageCount: 0
+  property var previousChatId: 0
+  property bool pendingScrollToBottom: false
+  property bool bottomScrollScheduled: false
+  property bool lastKnownAtBottom: true
+
+  function isScrolledToBottom() {
+    if (messageListView.count === 0) return true
+    if (messageListView.contentHeight <= messageListView.height) return true
+    var maxScrollY = messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin
+    return Math.abs(messageListView.contentY - maxScrollY) <= 32 || messageListView.atYEnd
+  }
+
+  function scrollToBottomSmoothly() {
+    unreadIncomingCount = 0
+    if (messageListView.count === 0) return
+    lastKnownAtBottom = true
+    scheduleBottomScroll(true)
+  }
+
+  function scheduleBottomScroll(animated) {
+    bottomScrollScheduled = true
     Qt.callLater(function() {
-      if (messageListView.count > 0 && (messageListView.atYEnd || messageListView.contentHeight <= messageListView.height)) {
-        messageListView.positionViewAtEnd()
-      }
+      // A model reset can happen after the first queued callback. Wait one
+      // more event-loop turn so ListView has finished restoring its delegates.
+      Qt.callLater(function() {
+        bottomScrollScheduled = false
+        if (messageListView.count === 0) return
+
+        var minY = messageListView.originY - messageListView.topMargin
+        var maxY = messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin
+        maxY = Math.max(minY, maxY)
+
+        messageScrollAnim.stop()
+        if (!animated || maxY <= messageListView.contentY + 1) {
+          messageListView.contentY = maxY
+          return
+        }
+
+        messageScrollAnim.duration = 200
+        messageScrollAnim.from = messageListView.contentY
+        messageScrollAnim.to = maxY
+        messageScrollAnim.start()
+      })
     })
+  }
+
+  onChatIdChanged: {
+    if (chatId !== previousChatId) {
+      previousChatId = chatId
+      unreadIncomingCount = 0
+      previousMessageCount = 0
+      pendingScrollToBottom = false
+      bottomScrollScheduled = false
+      lastKnownAtBottom = true
+      messageScrollAnim.stop()
+      scheduleBottomScroll(false)
+    }
+  }
+
+  onMessagesChanged: {
+    var newCount = messages ? messages.length : 0
+
+    if (newCount > previousMessageCount) {
+      var added = newCount - previousMessageCount
+      // Read the position captured before the array/model reset. Reading
+      // contentY here can already report the reset-to-top position.
+      var atBottom = (previousMessageCount === 0) || lastKnownAtBottom
+      var isFirstLoad = (previousMessageCount === 0)
+      previousMessageCount = newCount
+
+      if (atBottom) {
+        unreadIncomingCount = 0
+        if (isFirstLoad) {
+          // Initial conversation load: immediately position the latest bottom message
+          scheduleBottomScroll(false)
+        } else {
+          // Live message arrive/sent: smoothly scroll down just enough to reveal the new chat bubble
+          pendingScrollToBottom = true
+        }
+      } else {
+        unreadIncomingCount += added
+      }
+    } else {
+      previousMessageCount = newCount
+      // When message count is unchanged (status update ✓ -> ✓✓, edits, read receipt),
+      // preserve exact position with zero layout jumps or repositioning
+    }
   }
 
   property bool hasConversation: chatName !== ""
@@ -366,12 +450,28 @@ Item {
         maximumFlickVelocity: 4000
         flickDeceleration: 1600
 
-        // Maintain bottom-anchored view so incoming/outgoing messages and status updates keep scroll pinned to bottom
-        onCountChanged: {
-          Qt.callLater(function() {
-            if (messageListView.count > 0)
-              messageListView.positionViewAtEnd()
-          })
+        onAtYEndChanged: {
+          if (atYEnd) {
+            root.unreadIncomingCount = 0
+            root.lastKnownAtBottom = true
+          }
+        }
+
+        onMovementEnded: {
+          if (!root.pendingScrollToBottom && !root.bottomScrollScheduled) {
+            root.lastKnownAtBottom = root.isScrolledToBottom()
+          }
+        }
+
+        onDragStarted: {
+          root.lastKnownAtBottom = false
+        }
+
+        onContentHeightChanged: {
+          if (root.pendingScrollToBottom) {
+            root.pendingScrollToBottom = false
+            root.scheduleBottomScroll(true)
+          }
         }
 
         NumberAnimation {
@@ -1302,6 +1402,112 @@ Item {
         visible: root.hasConversation && root.messages.length === 0
         text: "Your conversation will appear here."
         color: Theme.secondaryText
+      }
+
+      // Floating pill-shaped button to scroll to bottom and show unread/new messages count
+      Item {
+        id: scrollToBottomPill
+        z: 20
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 12
+        visible: opacity > 0
+        opacity: (root.hasConversation && (!root.isScrolledToBottom() || root.unreadIncomingCount > 0)) ? 1.0 : 0.0
+
+        Behavior on opacity {
+          NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+        }
+
+        implicitWidth: pillContentRow.implicitWidth + 24
+        implicitHeight: 36
+
+        // Single-layer elevation shadow
+        Rectangle {
+          anchors.fill: pillGlass
+          anchors.topMargin: 2
+          anchors.bottomMargin: -2
+          anchors.leftMargin: -1
+          anchors.rightMargin: -1
+          radius: pillGlass.radius + 1
+          color: Qt.rgba(0, 0, 0, 0.28)
+          z: -1
+        }
+
+        Rectangle {
+          id: pillGlass
+          anchors.fill: parent
+          radius: height / 2
+          color: pillMouseArea.containsMouse
+            ? Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+            : Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.88)
+          border.color: pillMouseArea.containsMouse ? Theme.accent : Theme.divider
+          border.width: 1
+
+          Behavior on color {
+            ColorAnimation { duration: 150 }
+          }
+          Behavior on border.color {
+            ColorAnimation { duration: 150 }
+          }
+
+          // Subtle inner highlight border
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: (parent.height / 2) - 1
+            color: "transparent"
+            border.color: Qt.rgba(1, 1, 1, 0.12)
+            border.width: 1
+          }
+
+          RowLayout {
+            id: pillContentRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            Image {
+              source: "qrc:/qt/qml/Silkite/assets/icons/arrow-down.svg"
+              width: 16
+              height: 16
+              Layout.preferredWidth: 16
+              Layout.preferredHeight: 16
+              fillMode: Image.PreserveAspectFit
+              sourceSize: Qt.size(16, 16)
+              layer.enabled: true
+              layer.effect: ColorOverlay {
+                color: pillMouseArea.containsMouse ? Theme.accent : Theme.primaryText
+              }
+            }
+
+            Rectangle {
+              id: unreadBadge
+              visible: root.unreadIncomingCount > 0
+              radius: 9
+              Layout.preferredHeight: 18
+              Layout.preferredWidth: Math.max(18, badgeText.implicitWidth + 8)
+              color: Theme.accent
+
+              Label {
+                id: badgeText
+                anchors.centerIn: parent
+                text: root.unreadIncomingCount > 99 ? "99+" : root.unreadIncomingCount.toString()
+                color: Theme.accentText
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+              }
+            }
+          }
+
+          MouseArea {
+            id: pillMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              root.scrollToBottomSmoothly()
+            }
+          }
+        }
       }
 
   }
