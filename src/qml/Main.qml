@@ -1200,7 +1200,7 @@ ApplicationWindow {
           }
         }
 
-        // Draggable right edge splitter to resize chatbar (disabled when app width is <= 50%)
+        // Draggable right edge splitter to resize chatbar (disabled when app width is <= 50% or dragging a chat)
         Item {
           id: chatListSplitter
           anchors.top: parent.top
@@ -1208,7 +1208,7 @@ ApplicationWindow {
           anchors.right: parent.right
           width: 8
           z: 30
-          visible: window.chatListExpanded && !window.isHalfWidth
+          visible: window.chatListExpanded && !window.isHalfWidth && !window.isDraggingChatReplica
 
           Rectangle {
             anchors.centerIn: parent

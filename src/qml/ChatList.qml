@@ -349,6 +349,7 @@ Item {
           anchors.fill: parent
           acceptedButtons: Qt.LeftButton | Qt.RightButton
           hoverEnabled: true
+          preventStealing: isDragging
 
           property bool isLongPressed: false
           property bool isDragging: false
