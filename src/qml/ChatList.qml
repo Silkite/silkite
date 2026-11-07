@@ -9,6 +9,10 @@ Item {
   property var chatModel
   property var selectedChatId: 0
   property bool pointerInside: false
+  readonly property bool compactMode: width < 140
+
+  // Natural header width for "Chats" title + margins
+  readonly property real headerTitleWidth: chatsHeaderLabel.implicitWidth + (anchors.margins ? anchors.margins * 2 : 28)
 
   signal chatSelected(var chatId)
 
@@ -60,14 +64,20 @@ Item {
 
   ColumnLayout {
     anchors.fill: parent
-    anchors.margins: 14
-    spacing: 12
+    anchors.leftMargin: 14
+    anchors.rightMargin: 14
+    anchors.topMargin: 14
+    anchors.bottomMargin: 14
+    spacing: root.compactMode ? 8 : 12
 
     Label {
+      id: chatsHeaderLabel
+      visible: true
       text: "Chats"
       font.pixelSize: 22
       font.bold: true
       color: Theme.primaryText
+      Layout.alignment: Qt.AlignLeft
     }
 
     // Chat Organization: Folder bar with "New Folder" & Folder pills
@@ -85,7 +95,7 @@ Item {
 
     TextField {
       id: searchField
-
+      visible: !root.compactMode
       Layout.fillWidth: true
       Layout.preferredHeight: 38
       placeholderText: "Search chats..."
@@ -137,7 +147,7 @@ Item {
         readonly property bool isSelected: chatDelegate.chatId === root.selectedChatId
 
         width: chatList.width
-        height: (folderNames && folderNames.length > 0) ? 78 : 72
+        height: root.compactMode ? 56 : ((folderNames && folderNames.length > 0) ? 78 : 72)
         clip: true
 
         background: Rectangle {
@@ -164,54 +174,85 @@ Item {
         onClicked: root.chatSelected(chatDelegate.chatId)
 
         contentItem: RowLayout {
-          spacing: 11
+          spacing: root.compactMode ? 0 : 11
 
           // Avatar
-          Rectangle {
+          Item {
             Layout.preferredWidth: 44
             Layout.preferredHeight: 44
-            radius: 22
-            color: chatDelegate.avatarColor
-            clip: true
-            border.color: Qt.rgba(1, 1, 1, 0.15)
-            border.width: 1
+            Layout.alignment: root.compactMode ? Qt.AlignHCenter : Qt.AlignVCenter
 
-            Image {
-              id: avatarImage
+            Rectangle {
+              id: avatarBox
               anchors.fill: parent
-              anchors.margins: 1
-              visible: false
-              source: chatDelegate.avatarPath === "" ? "" : "file://" + chatDelegate.avatarPath
-              fillMode: Image.PreserveAspectCrop
-              asynchronous: true
-              smooth: true
-            }
+              radius: 22
+              color: chatDelegate.avatarColor
+              clip: true
+              border.color: Qt.rgba(1, 1, 1, 0.15)
+              border.width: 1
 
-            OpacityMask {
-              anchors.fill: parent
-              anchors.margins: 1
-              visible: chatDelegate.avatarPath !== ""
-              source: avatarImage
-              maskSource: Rectangle {
-                width: avatarImage.width
-                height: avatarImage.height
-                radius: width / 2
-                color: "white"
+              Image {
+                id: avatarImage
+                anchors.fill: parent
+                anchors.margins: 1
+                visible: false
+                source: chatDelegate.avatarPath === "" ? "" : "file://" + chatDelegate.avatarPath
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                smooth: true
+              }
+
+              OpacityMask {
+                anchors.fill: parent
+                anchors.margins: 1
+                visible: chatDelegate.avatarPath !== ""
+                source: avatarImage
+                maskSource: Rectangle {
+                  width: avatarImage.width
+                  height: avatarImage.height
+                  radius: width / 2
+                  color: "white"
+                }
+              }
+
+              Label {
+                anchors.centerIn: parent
+                text: chatDelegate.initials
+                visible: chatDelegate.avatarPath === ""
+                color: "#FFFFFF"
+                font.bold: true
+                font.pixelSize: 15
               }
             }
 
-            Label {
-              anchors.centerIn: parent
-              text: chatDelegate.initials
-              visible: chatDelegate.avatarPath === ""
-              color: "#FFFFFF"
-              font.bold: true
-              font.pixelSize: 15
+            // Compact unread indicator badge on avatar
+            Rectangle {
+              visible: root.compactMode && chatDelegate.unreadCount > 0
+              anchors.top: parent.top
+              anchors.right: parent.right
+              anchors.topMargin: -2
+              anchors.rightMargin: -2
+              width: Math.max(16, compactBadgeLabel.implicitWidth + 6)
+              height: 16
+              radius: 8
+              color: chatDelegate.isSelected ? Theme.windowBackground : Theme.accent
+              border.color: Qt.rgba(1, 1, 1, 0.3)
+              border.width: 1
+
+              Label {
+                id: compactBadgeLabel
+                anchors.centerIn: parent
+                text: chatDelegate.unreadCount.toString()
+                color: chatDelegate.isSelected ? Theme.primaryText : Theme.accentText
+                font.pixelSize: 9
+                font.bold: true
+              }
             }
           }
 
           // Chat details
           ColumnLayout {
+            visible: !root.compactMode
             Layout.fillWidth: true
             spacing: 4
 

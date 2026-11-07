@@ -8,6 +8,7 @@ Item {
   property var organizationManager: chatOrganizationManager
   property var chatModel: chatListModel
   property var selectedChatId: 0
+  property bool compactMode: width < 120
 
   signal createFolderRequested()
 
@@ -42,8 +43,13 @@ Item {
 
       Button {
         id: newFolderBtn
-        Layout.fillWidth: true
+        Layout.fillWidth: !root.compactMode
+        Layout.preferredWidth: root.compactMode ? 32 : -1
         Layout.preferredHeight: 32
+        Layout.alignment: root.compactMode ? Qt.AlignHCenter : Qt.AlignLeft
+        ToolTip.visible: hovered && root.compactMode
+        ToolTip.text: "New Folder"
+        ToolTip.delay: 300
 
         background: Rectangle {
           radius: 10
@@ -60,16 +66,18 @@ Item {
 
         contentItem: RowLayout {
           anchors.centerIn: parent
-          spacing: 6
+          spacing: root.compactMode ? 0 : 6
 
           Text {
             text: "+"
-            font.pixelSize: 16
+            font.pixelSize: 18
             font.bold: true
             color: Theme.accent
+            Layout.alignment: Qt.AlignHCenter
           }
 
           Label {
+            visible: !root.compactMode
             text: "New Folder"
             font.pixelSize: 12
             font.bold: true
@@ -132,7 +140,10 @@ Item {
           required property bool isActive
 
           height: 32
-          implicitWidth: folderContent.implicitWidth + 20
+          implicitWidth: root.compactMode ? 32 : (folderContent.implicitWidth + 20)
+          ToolTip.visible: hovered && root.compactMode
+          ToolTip.text: folderDelegate.name
+          ToolTip.delay: 300
 
           background: Rectangle {
             radius: 16
@@ -149,15 +160,17 @@ Item {
 
           contentItem: RowLayout {
             id: folderContent
-            spacing: 5
+            spacing: root.compactMode ? 0 : 5
             anchors.centerIn: parent
 
             Text {
               text: folderDelegate.folderIcon
               font.pixelSize: 13
+              Layout.alignment: Qt.AlignHCenter
             }
 
             Label {
+              visible: !root.compactMode
               text: folderDelegate.name
               font.pixelSize: 12
               font.bold: folderDelegate.isActive
@@ -166,7 +179,7 @@ Item {
 
             // Chat count indicator for custom folders
             Rectangle {
-              visible: folderDelegate.folderId !== "all" && folderDelegate.chatCount > 0
+              visible: !root.compactMode && folderDelegate.folderId !== "all" && folderDelegate.chatCount > 0
               Layout.preferredWidth: Math.max(16, countLabel.implicitWidth + 6)
               Layout.preferredHeight: 16
               radius: 8

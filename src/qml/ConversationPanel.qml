@@ -154,6 +154,8 @@ Item {
 
   // Active composer panel popup state ("none", "emoji", "sticker", "gif")
   property string activeComposerPopup: "none"
+  property bool composerControlsCollapsed: false
+  property bool composerToolsExpanded: false
 
   function toggleComposerPopup(popupName) {
     if (activeComposerPopup === popupName) {
@@ -244,26 +246,33 @@ Item {
   signal sendMediaRequested(string filePath, string caption, var replyToMessageId, string quoteText)
   signal toggleReactionRequested(var messageId, string emoji, bool isChosen)
 
-  // Outer soft ambient elevation shadow
+  // Outer soft ambient elevation shadow for the chat messages box
   Rectangle {
-    anchors.fill: glassBody
+    anchors.fill: chatMessagesBox
     anchors.topMargin: 2
     anchors.bottomMargin: -2
     anchors.leftMargin: -1
     anchors.rightMargin: -1
-    radius: glassBody.radius + 1
+    radius: chatMessagesBox.radius + 1
     color: Qt.rgba(0, 0, 0, 0.18)
     z: -1
+    visible: root.hasConversation
   }
 
-  // Liquid glass background container
+  // Liquid glass background container ONLY for the chat messages section
   Rectangle {
-    id: glassBody
-    anchors.fill: parent
+    id: chatMessagesBox
+    anchors.top: conversationHeader.bottom
+    anchors.topMargin: 6
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: messageComposer.top
+    anchors.bottomMargin: 8
     radius: 18
     color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
     border.color: Theme.divider
     border.width: 1
+    visible: root.hasConversation
 
     // Inner subtle border highlight
     Rectangle {
@@ -276,34 +285,61 @@ Item {
     }
   }
 
-  // Conversation header
+  // Conversation header with separate backgrounds
   Item {
     id: conversationHeader
     z: 2
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
-    height: root.hasConversation ? 72 : 0
-    clip: true
+    height: root.hasConversation ? 56 : 0
+    clip: false
 
     RowLayout {
       anchors.fill: parent
-      anchors.leftMargin: 16
-      anchors.rightMargin: 16
-      spacing: 12
+      anchors.leftMargin: 0
+      anchors.rightMargin: 0
+      spacing: 10
 
-      // Contact details pill with transparent background
-      Item {
+      // Left box: Contact info pill container
+      Rectangle {
+        id: contactInfoBox
         Layout.preferredHeight: 52
-        implicitWidth: contactInfoRow.implicitWidth + 24
+        implicitWidth: contactInfoRow.implicitWidth + 20
+        radius: 16
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+        border.color: Theme.divider
+        border.width: 1
+
+        // Soft elevation shadow
+        Rectangle {
+          anchors.fill: parent
+          anchors.topMargin: 2
+          anchors.bottomMargin: -2
+          anchors.leftMargin: -1
+          anchors.rightMargin: -1
+          radius: parent.radius + 1
+          color: Qt.rgba(0, 0, 0, 0.14)
+          z: -1
+        }
+
+        // Inner subtle highlight border
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: parent.radius - 1
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
+          border.width: 1
+        }
 
         RowLayout {
           id: contactInfoRow
           anchors.verticalCenter: parent.verticalCenter
           anchors.left: parent.left
           anchors.leftMargin: 8
-          anchors.rightMargin: 16
-          spacing: 12
+          anchors.rightMargin: 12
+          spacing: 10
 
           Rectangle {
             Layout.preferredWidth: 38
@@ -350,7 +386,7 @@ Item {
 
           ColumnLayout {
             spacing: 2
-            Layout.rightMargin: 12
+            Layout.rightMargin: 8
 
             Label {
               text: root.chatName
@@ -373,133 +409,170 @@ Item {
         Layout.fillWidth: true
       }
 
-      // Voice call button
-      ToolButton {
-        icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
-        icon.width: 20
-        icon.height: 20
-        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
-        focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
-        ToolTip.visible: hovered
-        ToolTip.text: "Voice call"
-        background: Rectangle {
-          radius: 12
-          color: parent.hovered ? Theme.accent : "transparent"
-          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
-          border.width: 1
+      // Right box: Action buttons container
+      Rectangle {
+        id: headerActionsBox
+        Layout.preferredHeight: 52
+        implicitWidth: headerActionsRow.implicitWidth + 16
+        radius: 16
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+        border.color: Theme.divider
+        border.width: 1
 
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 11
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, 0.35)
-            border.width: 1
-            visible: parent.parent.hovered
-          }
+        // Soft elevation shadow
+        Rectangle {
+          anchors.fill: parent
+          anchors.topMargin: 2
+          anchors.bottomMargin: -2
+          anchors.leftMargin: -1
+          anchors.rightMargin: -1
+          radius: parent.radius + 1
+          color: Qt.rgba(0, 0, 0, 0.14)
+          z: -1
         }
-      }
 
-      // Video call button
-      ToolButton {
-        icon.source: "qrc:/qt/qml/Silkite/assets/icons/video.svg"
-        icon.width: 20
-        icon.height: 20
-        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
-        focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
-        ToolTip.visible: hovered
-        ToolTip.text: "Video call"
-        background: Rectangle {
-          radius: 12
-          color: parent.hovered ? Theme.accent : "transparent"
-          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+        // Inner subtle highlight border
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: parent.radius - 1
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.08)
           border.width: 1
-
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 11
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, 0.35)
-            border.width: 1
-            visible: parent.parent.hovered
-          }
         }
-      }
 
-      // Search button
-      ToolButton {
-        icon.source: "qrc:/qt/qml/Silkite/assets/icons/search.svg"
-        icon.width: 20
-        icon.height: 20
-        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
-        focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
-        ToolTip.visible: hovered
-        ToolTip.text: "Search"
-        background: Rectangle {
-          radius: 12
-          color: parent.hovered ? Theme.accent : "transparent"
-          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
-          border.width: 1
+        RowLayout {
+          id: headerActionsRow
+          anchors.centerIn: parent
+          spacing: 6
 
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 11
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, 0.35)
-            border.width: 1
-            visible: parent.parent.hovered
+          // Voice call button
+          ToolButton {
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "Voice call"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
           }
-        }
-      }
 
-      // Three-dot more options button
-      ToolButton {
-        icon.source: "qrc:/qt/qml/Silkite/assets/icons/more.svg"
-        icon.width: 20
-        icon.height: 20
-        icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
-        focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
-        ToolTip.visible: hovered
-        ToolTip.text: "More options"
-        background: Rectangle {
-          radius: 12
-          color: parent.hovered ? Theme.accent : "transparent"
-          border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
-          border.width: 1
+          // Video call button
+          ToolButton {
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/video.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "Video call"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
 
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 11
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, 0.35)
-            border.width: 1
-            visible: parent.parent.hovered
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
+          }
+
+          // Search button
+          ToolButton {
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/search.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "Search"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
+          }
+
+          // Three-dot more options button
+          ToolButton {
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/more.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "More options"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
           }
         }
       }
     }
   }
 
-  // Messages area fills all space between the header and composer.
+  // Messages area fills all space between the header and composer inside the chat box.
   Item {
     id: messagesArea
     z: 1
     clip: true
-    anchors.top: conversationHeader.bottom
-    anchors.left: parent.left
-    anchors.right: parent.right
-    anchors.bottom: messageComposer.top
+    anchors.fill: chatMessagesBox
+    anchors.margins: 4
 
       ListView {
         id: messageListView
@@ -509,8 +582,8 @@ Item {
         visible: root.hasConversation
         model: root.messageModel ? root.messageModel : root.messages
         spacing: 6
-        topMargin: 12
-        bottomMargin: 12
+        topMargin: 8
+        bottomMargin: 8
         boundsBehavior: Flickable.StopAtBounds
         maximumFlickVelocity: 4000
         flickDeceleration: 1600
@@ -1932,9 +2005,9 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      anchors.leftMargin: 14
-      anchors.rightMargin: 14
-      anchors.bottomMargin: 10
+      anchors.leftMargin: 0
+      anchors.rightMargin: 0
+      anchors.bottomMargin: 6
       spacing: 6
 
       // Animated typing indicator positioned directly below messages and right above the input
@@ -2062,12 +2135,14 @@ Item {
 
       // Input row
       RowLayout {
+        id: composerInputRow
         Layout.fillWidth: true
         spacing: 6
 
         // Emojis Button
         ToolButton {
           id: emojiPickerBtn
+          visible: !root.composerControlsCollapsed
           focusPolicy: Qt.NoFocus
           implicitWidth: 38
           implicitHeight: 38
@@ -2089,6 +2164,7 @@ Item {
         // Stickers Button
         ToolButton {
           id: stickerPickerBtn
+          visible: !root.composerControlsCollapsed
           focusPolicy: Qt.NoFocus
           implicitWidth: 38
           implicitHeight: 38
@@ -2110,6 +2186,7 @@ Item {
         // GIFs Button
         ToolButton {
           id: gifPickerBtn
+          visible: !root.composerControlsCollapsed
           focusPolicy: Qt.NoFocus
           implicitWidth: 38
           implicitHeight: 38
@@ -2131,6 +2208,7 @@ Item {
         // Attachment Button
         ToolButton {
           id: attachBtn
+          visible: !root.composerControlsCollapsed
           focusPolicy: Qt.NoFocus
           implicitWidth: 38
           implicitHeight: 38
@@ -2147,9 +2225,35 @@ Item {
           }
         }
 
+        ToolButton {
+          id: compactComposerToolsButton
+          visible: root.composerControlsCollapsed
+          focusPolicy: Qt.NoFocus
+          Layout.preferredWidth: 32
+          Layout.preferredHeight: 42
+          text: root.composerToolsExpanded ? "⌄" : "⌃"
+          font.pixelSize: 22
+          font.weight: Font.Medium
+          contentItem: Label {
+            text: compactComposerToolsButton.text
+            color: compactComposerToolsButton.hovered ? Theme.accent : Theme.secondaryText
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+          }
+          onClicked: {
+            root.composerToolsExpanded = !root.composerToolsExpanded
+            if (!root.composerToolsExpanded) root.closeComposerPopups()
+          }
+          background: Rectangle {
+            radius: 10
+            color: compactComposerToolsButton.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+          }
+        }
+
         TextArea {
           id: messageInput
           Layout.fillWidth: true
+          Layout.minimumWidth: 140
           Layout.preferredHeight: Math.max(42, Math.min(140, implicitHeight))
           Layout.maximumHeight: 140
 
@@ -2245,6 +2349,108 @@ Item {
               border.width: 1
             }
           }
+        }
+      }
+
+      Rectangle {
+        id: compactComposerToolsPopup
+        parent: root
+        visible: opacity > 0
+        opacity: (root.composerControlsCollapsed && root.composerToolsExpanded) ? 1.0 : 0.0
+
+        // Calculate absolute position centered above compactComposerToolsButton
+        property var arrowPos: compactComposerToolsButton.mapToItem(root, 0, 0)
+        x: Math.max(8, Math.min(root.width - width - 8,
+          arrowPos.x + (compactComposerToolsButton.width - width) / 2))
+        property real targetY: arrowPos.y - height - 8
+        y: (root.composerControlsCollapsed && root.composerToolsExpanded) ? targetY : targetY + 12
+
+        width: 42
+        height: compactToolsColumn.implicitHeight + 12
+        radius: width / 2
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.95)
+        border.color: Theme.divider
+        border.width: 1
+        z: 70
+
+        // Subtle pill glow/inner highlight
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: 1
+          radius: parent.radius - 1
+          color: "transparent"
+          border.color: Qt.rgba(1, 1, 1, 0.06)
+          border.width: 1
+        }
+
+        Column {
+          id: compactToolsColumn
+          anchors.centerIn: parent
+          spacing: 4
+
+          ToolButton {
+            implicitWidth: 32; implicitHeight: 32; padding: 0
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/emoji.svg"
+            icon.width: 18; icon.height: 18
+            icon.color: hovered ? Theme.accent : Theme.secondaryText
+            ToolTip.visible: hovered
+            ToolTip.text: "Emojis"
+            ToolTip.delay: 300
+            background: Rectangle {
+              radius: 16
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            }
+            onClicked: { root.toggleComposerPopup("emoji"); root.composerToolsExpanded = false }
+          }
+          ToolButton {
+            implicitWidth: 32; implicitHeight: 32; padding: 0
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/sticker.svg"
+            icon.width: 18; icon.height: 18
+            icon.color: hovered ? Theme.accent : Theme.secondaryText
+            ToolTip.visible: hovered
+            ToolTip.text: "Stickers"
+            ToolTip.delay: 300
+            background: Rectangle {
+              radius: 16
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            }
+            onClicked: { root.toggleComposerPopup("sticker"); root.composerToolsExpanded = false }
+          }
+          ToolButton {
+            implicitWidth: 32; implicitHeight: 32; padding: 0
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/gif.svg"
+            icon.width: 18; icon.height: 18
+            icon.color: hovered ? Theme.accent : Theme.secondaryText
+            ToolTip.visible: hovered
+            ToolTip.text: "GIFs"
+            ToolTip.delay: 300
+            background: Rectangle {
+              radius: 16
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            }
+            onClicked: { root.toggleComposerPopup("gif"); root.composerToolsExpanded = false }
+          }
+          ToolButton {
+            implicitWidth: 32; implicitHeight: 32; padding: 0
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/attach.svg"
+            icon.width: 18; icon.height: 18
+            icon.color: hovered ? Theme.accent : Theme.secondaryText
+            ToolTip.visible: hovered
+            ToolTip.text: "Attach file"
+            ToolTip.delay: 300
+            background: Rectangle {
+              radius: 16
+              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+            }
+            onClicked: { fileDialog.open(); root.composerToolsExpanded = false }
+          }
+        }
+
+        Behavior on opacity {
+          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
         }
       }
     }

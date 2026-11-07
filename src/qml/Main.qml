@@ -57,10 +57,11 @@ ApplicationWindow {
 
   visible: true
 
-  width: 1200
+  readonly property real initialDefaultWidth: 1200
+  width: initialDefaultWidth
   height: 760
 
-  minimumWidth: 320
+  minimumWidth: initialDefaultWidth * 0.5
   minimumHeight: 600
 
   title: appController.appName
@@ -85,19 +86,14 @@ ApplicationWindow {
   property bool resendReady: false
   property string authError: ""
   property bool showQrLogin: true
-  property bool compactLogin: width <= Screen.width * 0.5
-  property bool compactLayout: width <= Screen.width * 0.5
-  property bool chatListExpanded: !compactLayout
+  property bool isHalfWidth: width <= (initialDefaultWidth * 0.5 + 40)
+  property bool compactLogin: isHalfWidth
+  property bool compactLayout: isHalfWidth
+  property bool chatListExpanded: true
   property bool chatListAutoExpanded: false
+  property real chatListCustomWidth: 320
+  property bool chatListDragging: false
   property int compactContentWidth: Math.min(width - 32, 720)
-
-  onWidthChanged: {
-    if (width <= Screen.width * 0.5)
-      chatListExpanded = false
-    else
-      chatListExpanded = true
-    chatListAutoExpanded = false
-  }
 
   Timer {
     id: collapseChatListTimer
@@ -906,9 +902,9 @@ ApplicationWindow {
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 48
-      color: Theme.elevatedBackground
-      border.color: Theme.divider
+      height: 30
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+      border.color: "transparent"
       border.width: 1
       z: 20
 
@@ -917,18 +913,18 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 1
-        color: Theme.divider
+        color: "transparent"
       }
 
       RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        spacing: 12
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
+        spacing: 8
 
         Image {
-          Layout.preferredWidth: 28
-          Layout.preferredHeight: 28
+          Layout.preferredWidth: 20
+          Layout.preferredHeight: 20
           source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
           fillMode: Image.PreserveAspectFit
           smooth: true
@@ -937,7 +933,7 @@ ApplicationWindow {
         Label {
           text: appController.appName
           font.bold: true
-          font.pixelSize: 17
+          font.pixelSize: 14
           color: Theme.primaryText
         }
 
@@ -947,17 +943,19 @@ ApplicationWindow {
 
         ToolButton {
           icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
-          icon.width: 22
-          icon.height: 22
+          icon.width: 20
+          icon.height: 20
           icon.color: Theme.primaryText
+          enabled: true
           focusPolicy: Qt.NoFocus
-          implicitWidth: 38
-          implicitHeight: 38
+          padding: 0
+          implicitWidth: 28
+          implicitHeight: 28
           ToolTip.visible: hovered
           ToolTip.text: window.chatListExpanded ? "Hide chats" : "Show chats"
           ToolTip.delay: 400
           background: Rectangle {
-            radius: 12
+            radius: 8
             color: parent.hovered ? Theme.controlBackground : "transparent"
             border.color: parent.hovered ? Theme.divider : "transparent"
             border.width: 1
@@ -965,7 +963,7 @@ ApplicationWindow {
             Rectangle {
               anchors.fill: parent
               anchors.margins: 1
-              radius: 11
+              radius: 7
               color: "transparent"
               border.color: Qt.rgba(1, 1, 1, 0.08)
               border.width: 1
@@ -994,10 +992,10 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        anchors.topMargin: 10
-        anchors.bottomMargin: 10
-        anchors.leftMargin: 10
-        width: 60
+        anchors.topMargin: 0
+        anchors.bottomMargin: 0
+        anchors.leftMargin: 0
+        width: 50
         z: 10
 
         Sidebar {
@@ -1023,37 +1021,53 @@ ApplicationWindow {
         anchors.leftMargin: window.chatListExpanded ? 10 : 0
         clip: true
 
-        readonly property real targetWidth: window.compactLayout ? 300 : 340
-        width: window.chatListExpanded ? targetWidth : 0
+        // Minimum width accommodates "Chats" header in its original size & position (pixelSize 22 + margins = 92px)
+        readonly property real minChatBarWidth: 92
+        // Custom set or default width
+        readonly property real userWidth: Math.max(minChatBarWidth, window.chatListCustomWidth)
+
+        // Space remaining for chatbar after reserving a comfortable width for conversation panel
+        readonly property real maxAllowedWidth: Math.max(minChatBarWidth, contentArea.width - sidebarReservedArea.width - 400)
+
+        // While open: width smoothly adapts according to available space, scaling down towards 92px if needed.
+        // When width is <= 50%, chatbar is fixed to its lowest (92px).
+        // When collapsed: width collapses completely to 0.
+        readonly property real responsiveTargetWidth: {
+          if (!window.chatListExpanded) return 0
+          if (window.isHalfWidth) return minChatBarWidth
+          return Math.max(minChatBarWidth, Math.min(userWidth, maxAllowedWidth))
+        }
+
+        width: responsiveTargetWidth
         opacity: window.chatListExpanded ? 1.0 : 0.0
         visible: width > 0 || opacity > 0
         z: 5
 
         Behavior on width {
-          NumberAnimation {
-            duration: 250
-            easing.type: Easing.OutCubic
-          }
-        }
-
-        Behavior on opacity {
+          enabled: !window.chatListDragging
           NumberAnimation {
             duration: 200
             easing.type: Easing.OutCubic
           }
         }
 
+        Behavior on opacity {
+          NumberAnimation {
+            duration: 180
+            easing.type: Easing.OutCubic
+          }
+        }
+
         Behavior on anchors.leftMargin {
           NumberAnimation {
-            duration: 250
+            duration: 200
             easing.type: Easing.OutCubic
           }
         }
 
         ChatList {
           id: chatListPane
-          width: chatListReservedArea.targetWidth
-          height: parent.height
+          anchors.fill: parent
           chatModel: chatListModel
           selectedChatId: window.selectedChatId
 
@@ -1068,6 +1082,63 @@ ApplicationWindow {
             if (window.compactLayout) {
               window.chatListExpanded = false
               window.chatListAutoExpanded = false
+            }
+          }
+        }
+
+        // Draggable right edge splitter to resize chatbar (disabled when app width is <= 50%)
+        Item {
+          id: chatListSplitter
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.right: parent.right
+          width: 8
+          z: 30
+          visible: window.chatListExpanded && !window.isHalfWidth
+
+          Rectangle {
+            anchors.centerIn: parent
+            width: 2
+            height: 36
+            radius: 1
+            color: splitterMouseArea.containsMouse || window.chatListDragging ? Theme.accent : Theme.divider
+            opacity: splitterMouseArea.containsMouse || window.chatListDragging ? 1.0 : 0.35
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+          }
+
+          MouseArea {
+            id: splitterMouseArea
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.SplitHCursor
+            preventStealing: true
+
+            property real startX: 0
+            property real initialWidth: 0
+
+            onPressed: function(mouse) {
+              startX = mouse.x
+              initialWidth = chatListReservedArea.width
+              window.chatListDragging = true
+            }
+
+            onPositionChanged: function(mouse) {
+              if (window.chatListDragging) {
+                var delta = mouse.x - startX
+                var candidateWidth = initialWidth + delta
+                // Dragging resizes the open chatbar between min (92px) and max allowed space
+                window.chatListCustomWidth = Math.max(chatListReservedArea.minChatBarWidth,
+                                                      Math.min(candidateWidth, chatListReservedArea.maxAllowedWidth))
+              }
+            }
+
+            onReleased: {
+              window.chatListDragging = false
+            }
+
+            onCanceled: {
+              window.chatListDragging = false
             }
           }
         }
@@ -1132,7 +1203,7 @@ ApplicationWindow {
 
       MouseArea {
         z: 40
-        visible: window.compactLayout && !window.chatListExpanded
+        visible: !window.isHalfWidth && window.compactLayout && !window.chatListExpanded
         width: 14
         height: parent.height
         anchors.left: sidebarReservedArea.right

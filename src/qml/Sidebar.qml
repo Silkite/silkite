@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
+import QtQuick.Shapes
 
 Item {
   id: root
@@ -10,89 +11,72 @@ Item {
 
   signal navigationRequested(string page)
 
-  implicitWidth: 64
+  implicitWidth: 50
   width: implicitWidth
 
-  // Outer soft ambient elevation shadow
-  Rectangle {
-    anchors.fill: glassBody
-    anchors.topMargin: 2
-    anchors.bottomMargin: -2
-    anchors.leftMargin: -1
-    anchors.rightMargin: -1
-    radius: glassBody.radius + 1
-    color: Qt.rgba(0, 0, 0, 0.18)
-    z: -1
-  }
-
   // Floating liquid glass background container with rounded borders
-  Rectangle {
+  Shape {
     id: glassBody
     anchors.fill: parent
-    radius: 18
-    color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
-    border.color: Theme.divider
-    border.width: 1
+    layer.enabled: true
+    layer.smooth: true
+    layer.samples: 8
 
-    // Inner subtle border highlight matching UI aesthetic
-    Rectangle {
-      anchors.fill: parent
-      anchors.margins: 1
-      radius: 17
-      color: "transparent"
-      border.color: Qt.rgba(1, 1, 1, 0.08)
-      border.width: 1
+    ShapePath {
+      fillColor: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+      strokeColor: "transparent"
+      strokeWidth: 0
+      capStyle: ShapePath.RoundCap
+      joinStyle: ShapePath.RoundJoin
+
+      startX: 0
+      startY: 0
+      PathLine { x: glassBody.width; y: 0 }
+      PathArc { x: glassBody.width - 10; y: 10; radiusX: 10; radiusY: 10; useLargeArc: false; direction: PathArc.Counterclockwise }
+      PathLine { x: glassBody.width - 10; y: glassBody.height }
+      PathLine { x: 0; y: glassBody.height }
+      PathLine { x: 0; y: 0 }
     }
 
     ColumnLayout {
       id: columnContent
-      anchors.fill: parent
-      anchors.topMargin: 14
-      anchors.bottomMargin: 14
-      spacing: 12
-
-      // Silkite Logo
-      Image {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.preferredWidth: 28
-        Layout.preferredHeight: 28
-        source: "qrc:/qt/qml/Silkite/assets/logo-transparent.png"
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-      }
-
-      // Divider separator
-      Rectangle {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.preferredWidth: 28
-        Layout.preferredHeight: 1
-        color: Theme.divider
-      }
+      anchors.centerIn: parent
+      anchors.horizontalCenterOffset: -5
+      spacing: 5
 
       // Chats navigation icon
       ToolButton {
         Layout.alignment: Qt.AlignHCenter
         icon.source: "qrc:/qt/qml/Silkite/assets/icons/chat.svg"
-        icon.width: 22
-        icon.height: 22
+        icon.width: 20
+        icon.height: 20
+        padding: 0
         icon.color: root.currentPage === "chats" ? Theme.accentText : Theme.primaryText
         focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
+        implicitWidth: 32
+        implicitHeight: 32
         ToolTip.visible: hovered
         ToolTip.text: "Chats"
         ToolTip.delay: 400
 
         background: Rectangle {
-          radius: 12
+          antialiasing: true
+          layer.enabled: true
+          layer.smooth: true
+          layer.samples: 4
+          radius: 10
           color: root.currentPage === "chats" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
           border.color: root.currentPage === "chats" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
           border.width: 1
 
           Rectangle {
+            antialiasing: true
+            layer.enabled: true
+            layer.smooth: true
+            layer.samples: 4
             anchors.fill: parent
             anchors.margins: 1
-            radius: 11
+            radius: 9
             color: "transparent"
             border.color: Qt.rgba(1, 1, 1, root.currentPage === "chats" ? 0.35 : 0.08)
             border.width: 1
@@ -106,26 +90,35 @@ Item {
       ToolButton {
         Layout.alignment: Qt.AlignHCenter
         icon.source: "qrc:/qt/qml/Silkite/assets/icons/people.svg"
-        icon.width: 22
-        icon.height: 22
+        icon.width: 20
+        icon.height: 20
+        padding: 0
         icon.color: root.currentPage === "contacts" ? Theme.accentText : Theme.primaryText
         focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
+        implicitWidth: 32
+        implicitHeight: 32
         ToolTip.visible: hovered
         ToolTip.text: "Contacts"
         ToolTip.delay: 400
 
         background: Rectangle {
-          radius: 12
+          antialiasing: true
+          layer.enabled: true
+          layer.smooth: true
+          layer.samples: 4
+          radius: 10
           color: root.currentPage === "contacts" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
           border.color: root.currentPage === "contacts" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
           border.width: 1
 
           Rectangle {
+            antialiasing: true
+            layer.enabled: true
+            layer.smooth: true
+            layer.samples: 4
             anchors.fill: parent
             anchors.margins: 1
-            radius: 11
+            radius: 9
             color: "transparent"
             border.color: Qt.rgba(1, 1, 1, root.currentPage === "contacts" ? 0.35 : 0.08)
             border.width: 1
@@ -139,26 +132,35 @@ Item {
       ToolButton {
         Layout.alignment: Qt.AlignHCenter
         icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
-        icon.width: 22
-        icon.height: 22
+        icon.width: 20
+        icon.height: 20
+        padding: 0
         icon.color: root.currentPage === "calls" ? Theme.accentText : Theme.primaryText
         focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
+        implicitWidth: 32
+        implicitHeight: 32
         ToolTip.visible: hovered
         ToolTip.text: "Calls"
         ToolTip.delay: 400
 
         background: Rectangle {
-          radius: 12
+          antialiasing: true
+          layer.enabled: true
+          layer.smooth: true
+          layer.samples: 4
+          radius: 10
           color: root.currentPage === "calls" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
           border.color: root.currentPage === "calls" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
           border.width: 1
 
           Rectangle {
+            antialiasing: true
+            layer.enabled: true
+            layer.smooth: true
+            layer.samples: 4
             anchors.fill: parent
             anchors.margins: 1
-            radius: 11
+            radius: 9
             color: "transparent"
             border.color: Qt.rgba(1, 1, 1, root.currentPage === "calls" ? 0.35 : 0.08)
             border.width: 1
@@ -168,35 +170,39 @@ Item {
         onClicked: root.navigationRequested("calls")
       }
 
-      // Flexible space between top navigation and bottom settings
-      Item {
-        Layout.fillHeight: true
-      }
-
       // Settings icon
       ToolButton {
         Layout.alignment: Qt.AlignHCenter
         icon.source: "qrc:/qt/qml/Silkite/assets/icons/settings.svg"
-        icon.width: 22
-        icon.height: 22
+        icon.width: 20
+        icon.height: 20
+        padding: 0
         icon.color: root.currentPage === "settings" ? Theme.accentText : Theme.primaryText
         focusPolicy: Qt.NoFocus
-        implicitWidth: 38
-        implicitHeight: 38
+        implicitWidth: 32
+        implicitHeight: 32
         ToolTip.visible: hovered
         ToolTip.text: "Settings"
         ToolTip.delay: 400
 
         background: Rectangle {
-          radius: 12
+          antialiasing: true
+          layer.enabled: true
+          layer.smooth: true
+          layer.samples: 4
+          radius: 10
           color: root.currentPage === "settings" ? Theme.accent : (parent.hovered ? Theme.controlBackground : "transparent")
           border.color: root.currentPage === "settings" ? Qt.rgba(1, 1, 1, 0.25) : (parent.hovered ? Theme.divider : "transparent")
           border.width: 1
 
           Rectangle {
+            antialiasing: true
+            layer.enabled: true
+            layer.smooth: true
+            layer.samples: 4
             anchors.fill: parent
             anchors.margins: 1
-            radius: 11
+            radius: 9
             color: "transparent"
             border.color: Qt.rgba(1, 1, 1, root.currentPage === "settings" ? 0.35 : 0.08)
             border.width: 1
