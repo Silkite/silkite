@@ -47,10 +47,15 @@ Item {
     lastKnownAtBottom = true
     messageScrollAnim.stop()
     messageListView.positionViewAtEnd()
-    // Run once more on next tick to account for any deferred delegate resizing
+    // Run across multiple event loops to ensure initial delegate layouts are finished
     Qt.callLater(function() {
       if (messageListView.count > 0 && lastKnownAtBottom) {
         messageListView.positionViewAtEnd()
+        Qt.callLater(function() {
+          if (messageListView.count > 0 && lastKnownAtBottom) {
+            messageListView.positionViewAtEnd()
+          }
+        })
       }
     })
   }
@@ -68,34 +73,49 @@ Item {
     }
   }
 
-  function handleMessageCountChange(newCount) {
-    if (newCount > previousMessageCount) {
-      var added = newCount - previousMessageCount
-      var atBottom = (previousMessageCount === 0) || lastKnownAtBottom
-      var isFirstLoad = (previousMessageCount === 0)
-      previousMessageCount = newCount
-
-      if (atBottom) {
-        unreadIncomingCount = 0
-        scheduleBottomScroll(!isFirstLoad)
-      } else {
-        unreadIncomingCount += added
+  onMessagesChanged: {
+    if (!messageModel) {
+      // Fallback if using array model
+      var newCount = messages ? messages.length : 0
+      if (newCount > previousMessageCount) {
+        var lastMsg = (messages && messages.length > 0) ? messages[messages.length - 1] : null
+        handleNewMessage(lastMsg)
       }
-    } else {
       previousMessageCount = newCount
     }
   }
 
-  onMessagesChanged: {
-    if (!messageModel) {
-      handleMessageCountChange(messages ? messages.length : 0)
+  function handleNewMessage(msg) {
+    var atBottom = lastKnownAtBottom && isScrolledToBottom()
+    var isOutgoing = Boolean(msg && msg.outgoing)
+
+    if (atBottom) {
+      unreadIncomingCount = 0
+      scheduleBottomScroll(true)
+    } else {
+      // User is scrolled up (arrow is visible):
+      // - Do NOT scroll down
+      // - Increment badge ONLY for incoming messages, ignoring outgoing messages
+      if (!isOutgoing) {
+        unreadIncomingCount++
+      }
     }
   }
 
   Connections {
     target: root.messageModel
+    function onMessagesLoaded() {
+      // When history is loaded or reloaded for a conversation, ensure we position at the bottom
+      lastKnownAtBottom = true
+      unreadIncomingCount = 0
+      root.scheduleBottomScroll(false)
+    }
+    function onMessageAdded(message) {
+      root.handleNewMessage(message)
+    }
     function onCountChanged() {
-      root.handleMessageCountChange(root.messageModel ? root.messageModel.count : 0)
+      // Handled primarily via messageAdded, but keep count sync
+      previousMessageCount = root.messageModel ? root.messageModel.count : 0
     }
   }
 

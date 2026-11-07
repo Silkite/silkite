@@ -98,6 +98,7 @@ void MessageListModel::setMessages(const QVariantList &messages) {
   }
   endResetModel();
   emit countChanged();
+  emit messagesLoaded();
 }
 
 void MessageListModel::appendMessage(const QVariantMap &message) {
@@ -116,6 +117,7 @@ void MessageListModel::appendMessage(const QVariantMap &message) {
   m_messages.append(message);
   endInsertRows();
   emit countChanged();
+  emit messageAdded(message);
 }
 
 void MessageListModel::replaceMessageId(qint64 oldId, const QVariantMap &message) {

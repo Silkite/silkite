@@ -52,6 +52,8 @@ public:
 
 signals:
   void countChanged();
+  void messagesLoaded();
+  void messageAdded(const QVariantMap &message);
 
 private:
   int findIndexById(qint64 messageId) const;
