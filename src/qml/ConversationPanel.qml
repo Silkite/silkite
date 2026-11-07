@@ -19,6 +19,10 @@ Item {
   property var messages: []
   property var messageModel: null
   property bool typing: false
+  property bool isSecondaryPane: false
+
+  signal closePaneRequested()
+  signal toggleSplitRequested()
 
   // Pill notification button tracking unread/new messages arriving while scrolled up
   property int unreadIncomingCount: 0
@@ -531,6 +535,37 @@ Item {
                 visible: parent.parent.hovered
               }
             }
+          }
+
+          // Close pane button if this is secondary pane
+          ToolButton {
+            visible: root.isSecondaryPane
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/close.svg"
+            icon.width: 18
+            icon.height: 18
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "Close pane"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
+            onClicked: root.closePaneRequested()
           }
 
           // Three-dot more options button
@@ -3252,7 +3287,7 @@ Item {
   Button {
     z: 10
     anchors.centerIn: parent
-    visible: !root.hasConversation
+    visible: !root.hasConversation && !root.isSecondaryPane
     text: "Start messaging"
     implicitHeight: 40
     onClicked: root.startMessaging()

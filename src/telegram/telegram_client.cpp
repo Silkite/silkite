@@ -30,73 +30,72 @@ TelegramClient::TelegramClient(QObject *parent)
   });
   connect(&m_worker, &TelegramWorker::chatsReset, this, &TelegramClient::chatsReset);
   connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64 chatId, const QVariantList &messages, bool hasMore) {
-    // A history request can finish after the user has already selected another chat.
-    // Never let that stale response replace the active conversation.
-    if (chatId != m_activeChatId) return;
+    auto updateMessagesForChat = [this, chatId, &messages](qint64 targetChatId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != targetChatId) return;
 
-    // Merge messages keeping them sorted by messageId ascending, avoiding duplicates
-    QMap<qint64, QVariantMap> map;
-    for (const auto &v : m_conversationMessages) {
-      const auto m = v.toMap();
-      map.insert(m.value("messageId").toLongLong(), m);
-    }
-    for (const auto &v : messages) {
-      const auto m = v.toMap();
-      const qint64 mid = m.value("messageId").toLongLong();
-      if (map.contains(mid)) {
-        // If we already had this message and it had a downloaded filePath, preserve it!
-        auto existing = map.value(mid);
-        if (m.value("filePath").toString().isEmpty() && !existing.value("filePath").toString().isEmpty()) {
-          QVariantMap updated = m;
-          updated["filePath"] = existing.value("filePath");
-          updated["isDownloading"] = false;
-          map.insert(mid, updated);
-          continue;
+      QMap<qint64, QVariantMap> map;
+      for (const auto &v : targetMessages) {
+        const auto m = v.toMap();
+        map.insert(m.value("messageId").toLongLong(), m);
+      }
+      for (const auto &v : messages) {
+        const auto m = v.toMap();
+        const qint64 mid = m.value("messageId").toLongLong();
+        if (map.contains(mid)) {
+          auto existing = map.value(mid);
+          if (m.value("filePath").toString().isEmpty() && !existing.value("filePath").toString().isEmpty()) {
+            QVariantMap updated = m;
+            updated["filePath"] = existing.value("filePath");
+            updated["isDownloading"] = false;
+            map.insert(mid, updated);
+            continue;
+          }
+        }
+        map.insert(mid, m);
+      }
+      QVariantList merged;
+      for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        merged.append(it.value());
+      }
+      for (int i = 0; i < merged.size(); ++i) {
+        QVariantMap m = merged[i].toMap();
+        const qint64 replyId = m.value("replyToMessageId").toLongLong();
+        if (replyId > 0 && (m.value("replyText").toString().isEmpty() || m.value("replySender").toString().isEmpty())) {
+          if (map.contains(replyId)) {
+            const QVariantMap target = map.value(replyId);
+            if (m.value("replyText").toString().isEmpty()) {
+              const QString targetText = target.value("caption").toString().trimmed().isEmpty()
+                  ? target.value("text").toString()
+                  : target.value("caption").toString();
+              m["replyText"] = targetText;
+            }
+            if (m.value("replySender").toString().isEmpty()) {
+              m["replySender"] = target.value("outgoing").toBool() ? QStringLiteral("You") : m_chatTitles.value(chatId);
+            }
+            merged[i] = m;
+          }
         }
       }
-      map.insert(mid, m);
-    }
-    QVariantList merged;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-      merged.append(it.value());
-    }
-    // Populate reply metadata from cached messages if missing
-    for (int i = 0; i < merged.size(); ++i) {
-      QVariantMap m = merged[i].toMap();
-      const qint64 replyId = m.value("replyToMessageId").toLongLong();
-      if (replyId > 0 && (m.value("replyText").toString().isEmpty() || m.value("replySender").toString().isEmpty())) {
-        if (map.contains(replyId)) {
-          const QVariantMap target = map.value(replyId);
-          if (m.value("replyText").toString().isEmpty()) {
-            const QString targetText = target.value("caption").toString().trimmed().isEmpty()
-                ? target.value("text").toString()
-                : target.value("caption").toString();
-            m["replyText"] = targetText;
-          }
-          if (m.value("replySender").toString().isEmpty()) {
-            m["replySender"] = target.value("outgoing").toBool() ? QStringLiteral("You") : m_chatTitles.value(chatId);
-          }
-          merged[i] = m;
+      targetMessages = merged;
+      targetModel.setMessages(merged);
+      emitChanged();
+
+      if (targetMessages.size() < 30 && !targetMessages.isEmpty()) {
+        const qint64 oldestId = targetMessages.first().toMap().value("messageId").toLongLong();
+        if (oldestId > 0) {
+          m_worker.loadConversation(chatId, oldestId, 50);
         }
       }
-    }
-    m_conversationMessages = merged;
-    m_messageModel.setMessages(merged);
-    emit conversationMessagesChanged();
+    };
 
-    // If TDLib only returned a small set (e.g. initial cache had only 1 message),
-    // automatically request more history starting from the oldest message so the full conversation loads.
-    if (m_conversationMessages.size() < 30 && !m_conversationMessages.isEmpty()) {
-      const qint64 oldestId = m_conversationMessages.first().toMap().value("messageId").toLongLong();
-      if (oldestId > 0) {
-        m_worker.loadConversation(chatId, oldestId, 50);
-      }
-    }
+    updateMessagesForChat(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    updateMessagesForChat(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
-  auto resolveReplyInfo = [this](QVariantMap &msgMap) {
+
+  auto resolveReplyInfo = [this](QVariantMap &msgMap, qint64 activeId, const QVariantList &targetMessages) {
     const qint64 replyId = msgMap.value("replyToMessageId").toLongLong();
     if (replyId > 0 && (msgMap.value("replyText").toString().isEmpty() || msgMap.value("replySender").toString().isEmpty())) {
-      for (const auto &v : m_conversationMessages) {
+      for (const auto &v : targetMessages) {
         const auto target = v.toMap();
         if (target.value("messageId").toLongLong() == replyId) {
           if (msgMap.value("replyText").toString().isEmpty()) {
@@ -106,7 +105,7 @@ TelegramClient::TelegramClient(QObject *parent)
             msgMap["replyText"] = targetText;
           }
           if (msgMap.value("replySender").toString().isEmpty()) {
-            msgMap["replySender"] = target.value("outgoing").toBool() ? QStringLiteral("You") : m_chatTitles.value(m_activeChatId);
+            msgMap["replySender"] = target.value("outgoing").toBool() ? QStringLiteral("You") : m_chatTitles.value(activeId);
           }
           break;
         }
@@ -115,94 +114,132 @@ TelegramClient::TelegramClient(QObject *parent)
   };
 
   connect(&m_worker, &TelegramWorker::messageReceived, this, [this, resolveReplyInfo](qint64 chatId, const QVariantMap &message) {
-    if (chatId != m_activeChatId) return;
-    const qint64 msgId = message.value("messageId").toLongLong();
-    bool exists = false;
-    for (const auto &m : m_conversationMessages) {
-      if (m.toMap().value("messageId").toLongLong() == msgId) {
-        exists = true;
-        break;
+    auto handleReceived = [this, chatId, &message, resolveReplyInfo](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      const qint64 msgId = message.value("messageId").toLongLong();
+      bool exists = false;
+      for (const auto &m : targetMessages) {
+        if (m.toMap().value("messageId").toLongLong() == msgId) {
+          exists = true;
+          break;
+        }
       }
-    }
-    if (!exists) {
-      QVariantMap msgCopy = message;
-      resolveReplyInfo(msgCopy);
-      m_conversationMessages.append(msgCopy);
-      m_messageModel.appendMessage(msgCopy);
-      emit conversationMessagesChanged();
-    }
+      if (!exists) {
+        QVariantMap msgCopy = message;
+        resolveReplyInfo(msgCopy, activeId, targetMessages);
+        targetMessages.append(msgCopy);
+        targetModel.appendMessage(msgCopy);
+        emitChanged();
+      }
+    };
+
+    handleReceived(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleReceived(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
+
   connect(&m_worker, &TelegramWorker::messageSendSucceeded, this, [this, resolveReplyInfo](qint64 chatId, qint64 oldId, const QVariantMap &message) {
-    if (chatId != m_activeChatId) return;
-    QVariantMap msgCopy = message;
-    resolveReplyInfo(msgCopy);
-    bool found = false;
-    for (int i = 0; i < m_conversationMessages.size(); ++i) {
-      if (m_conversationMessages[i].toMap().value("messageId").toLongLong() == oldId) {
-        // Also keep any replyText/replySender already in the pending message if server didn't return it
-        const auto oldMap = m_conversationMessages[i].toMap();
-        if (msgCopy.value("replyText").toString().isEmpty() && !oldMap.value("replyText").toString().isEmpty()) {
-          msgCopy["replyText"] = oldMap.value("replyText");
+    auto handleSendSucceeded = [this, chatId, oldId, &message, resolveReplyInfo](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      QVariantMap msgCopy = message;
+      resolveReplyInfo(msgCopy, activeId, targetMessages);
+      bool found = false;
+      for (int i = 0; i < targetMessages.size(); ++i) {
+        if (targetMessages[i].toMap().value("messageId").toLongLong() == oldId) {
+          const auto oldMap = targetMessages[i].toMap();
+          if (msgCopy.value("replyText").toString().isEmpty() && !oldMap.value("replyText").toString().isEmpty()) {
+            msgCopy["replyText"] = oldMap.value("replyText");
+          }
+          if (msgCopy.value("replySender").toString().isEmpty() && !oldMap.value("replySender").toString().isEmpty()) {
+            msgCopy["replySender"] = oldMap.value("replySender");
+          }
+          targetMessages[i] = msgCopy;
+          found = true;
+          break;
         }
-        if (msgCopy.value("replySender").toString().isEmpty() && !oldMap.value("replySender").toString().isEmpty()) {
-          msgCopy["replySender"] = oldMap.value("replySender");
-        }
-        m_conversationMessages[i] = msgCopy;
-        found = true;
-        break;
       }
-    }
-    if (!found) m_conversationMessages.append(msgCopy);
-    m_messageModel.replaceMessageId(oldId, msgCopy);
-    emit conversationMessagesChanged();
+      if (!found) targetMessages.append(msgCopy);
+      targetModel.replaceMessageId(oldId, msgCopy);
+      emitChanged();
+    };
+
+    handleSendSucceeded(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleSendSucceeded(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
+
   connect(&m_worker, &TelegramWorker::chatReadOutboxUpdated, this, [this](qint64 chatId, qint64 lastReadId) {
-    if (chatId != m_activeChatId) return;
-    bool changed = false;
-    for (QVariant &value : m_conversationMessages) {
-      QVariantMap message = value.toMap();
-      if (message.value("outgoing").toBool() && message.value("messageId").toLongLong() <= lastReadId && message.value("status").toString() != QStringLiteral("✓✓")) {
-        message["status"] = QStringLiteral("✓✓");
-        value = message;
-        changed = true;
+    auto handleReadOutbox = [chatId, lastReadId](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      bool changed = false;
+      for (QVariant &value : targetMessages) {
+        QVariantMap message = value.toMap();
+        if (message.value("outgoing").toBool() && message.value("messageId").toLongLong() <= lastReadId && message.value("status").toString() != QStringLiteral("✓✓")) {
+          message["status"] = QStringLiteral("✓✓");
+          value = message;
+          changed = true;
+        }
       }
-    }
-    m_messageModel.updateReadOutbox(lastReadId);
-    if (changed) emit conversationMessagesChanged();
+      targetModel.updateReadOutbox(lastReadId);
+      if (changed) emitChanged();
+    };
+
+    handleReadOutbox(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleReadOutbox(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
-  connect(&m_worker, &TelegramWorker::chatTyping, this, [this](qint64 chatId, bool active) { if (chatId != m_activeChatId || m_typing == active) return; m_typing = active; emit typingChanged(); });
+
+  connect(&m_worker, &TelegramWorker::chatTyping, this, [this](qint64 chatId, bool active) {
+    if (chatId == m_activeChatId && m_typing != active) {
+      m_typing = active;
+      emit typingChanged();
+    }
+    if (chatId == m_secondaryActiveChatId && m_secondaryTyping != active) {
+      m_secondaryTyping = active;
+      emit secondaryTypingChanged();
+    }
+  });
+
   connect(&m_worker, &TelegramWorker::messageFileUpdated, this, [this](qint64 chatId, qint64 messageId, const QString &filePath) {
-    if (chatId != m_activeChatId) return;
-    bool changed = false;
-    for (QVariant &value : m_conversationMessages) {
-      QVariantMap message = value.toMap();
-      if (message.value("messageId").toLongLong() == messageId) {
-        message["filePath"] = filePath;
-        message["isDownloading"] = false;
-        value = message;
-        changed = true;
-        break;
+    auto handleFileUpdated = [chatId, messageId, &filePath](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      bool changed = false;
+      for (QVariant &value : targetMessages) {
+        QVariantMap message = value.toMap();
+        if (message.value("messageId").toLongLong() == messageId) {
+          message["filePath"] = filePath;
+          message["isDownloading"] = false;
+          value = message;
+          changed = true;
+          break;
+        }
       }
-    }
-    if (changed) {
-      m_messageModel.updateMessageFile(messageId, filePath);
-      emit conversationMessagesChanged();
-    }
+      if (changed) {
+        targetModel.updateMessageFile(messageId, filePath);
+        emitChanged();
+      }
+    };
+
+    handleFileUpdated(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleFileUpdated(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
+
   connect(&m_worker, &TelegramWorker::messageReactionsUpdated, this, [this](qint64 chatId, qint64 messageId, const QVariantList &reactions) {
-    if (chatId != m_activeChatId) return;
-    bool changed = false;
-    for (QVariant &value : m_conversationMessages) {
-      QVariantMap message = value.toMap();
-      if (message.value("messageId").toLongLong() == messageId) {
-        message["reactions"] = reactions;
-        value = message;
-        changed = true;
-        break;
+    auto handleReactionsUpdated = [chatId, messageId, &reactions](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      bool changed = false;
+      for (QVariant &value : targetMessages) {
+        QVariantMap message = value.toMap();
+        if (message.value("messageId").toLongLong() == messageId) {
+          message["reactions"] = reactions;
+          value = message;
+          changed = true;
+          break;
+        }
       }
-    }
-    m_messageModel.updateMessageReactions(messageId, reactions);
-    if (changed) emit conversationMessagesChanged();
+      targetModel.updateMessageReactions(messageId, reactions);
+      if (changed) emitChanged();
+    };
+
+    handleReactionsUpdated(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleReactionsUpdated(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
   connect(&m_worker, &TelegramWorker::qrCodeLinkChanged, this,
           [this](const QString &link) {
@@ -296,6 +333,25 @@ void TelegramClient::loadConversation(qint64 chatId, qint64 fromMessageId) {
   emit conversationMessagesChanged();
   m_worker.loadConversation(chatId, fromMessageId);
 }
+void TelegramClient::loadSecondaryConversation(qint64 chatId, qint64 fromMessageId) {
+  m_secondaryActiveChatId = chatId;
+  m_secondaryTyping = false;
+  emit secondaryTypingChanged();
+  m_secondaryConversationMessages.clear();
+  m_secondaryMessageModel.clear();
+  emit secondaryConversationMessagesChanged();
+  if (chatId != 0) {
+    m_worker.loadConversation(chatId, fromMessageId);
+  }
+}
+void TelegramClient::closeSecondaryConversation() {
+  m_secondaryActiveChatId = 0;
+  m_secondaryTyping = false;
+  emit secondaryTypingChanged();
+  m_secondaryConversationMessages.clear();
+  m_secondaryMessageModel.clear();
+  emit secondaryConversationMessagesChanged();
+}
 void TelegramClient::sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId, const QString &quoteText) {
   if (chatId != 0 && !text.trimmed().isEmpty()) m_worker.sendMessage(chatId, text.trimmed(), replyToMessageId, quoteText.trimmed());
 }
@@ -308,10 +364,17 @@ void TelegramClient::viewMessage(qint64 chatId, qint64 messageId) {
 void TelegramClient::toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen) {
   if (chatId != 0 && messageId != 0 && !emoji.isEmpty()) {
     // 1. Optimistically update local model immediately for instant UI feedback
-    m_messageModel.toggleReactionOptimistic(messageId, emoji);
+    if (chatId == m_activeChatId) {
+      m_messageModel.toggleReactionOptimistic(messageId, emoji);
+    }
+    if (chatId == m_secondaryActiveChatId) {
+      m_secondaryMessageModel.toggleReactionOptimistic(messageId, emoji);
+    }
     // 2. Dispatch to TDLib worker
     m_worker.toggleReaction(chatId, messageId, emoji, isChosen);
   }
 }
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }
+QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }
+bool TelegramClient::secondaryTyping() const { return m_secondaryTyping; }

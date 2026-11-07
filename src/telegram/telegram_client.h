@@ -20,6 +20,10 @@ class TelegramClient final : public QObject {
   Q_PROPERTY(MessageListModel* messageModel READ messageModel CONSTANT)
   Q_PROPERTY(bool typing READ typing NOTIFY typingChanged)
 
+  Q_PROPERTY(QVariantList secondaryConversationMessages READ secondaryConversationMessages NOTIFY secondaryConversationMessagesChanged)
+  Q_PROPERTY(MessageListModel* secondaryMessageModel READ secondaryMessageModel CONSTANT)
+  Q_PROPERTY(bool secondaryTyping READ secondaryTyping NOTIFY secondaryTypingChanged)
+
 public:
   explicit TelegramClient(QObject *parent = nullptr);
   ~TelegramClient() override = default;
@@ -37,6 +41,8 @@ public:
   Q_INVOKABLE void selectPhoneLogin();
   Q_INVOKABLE void selectQrLogin();
   Q_INVOKABLE void loadConversation(qint64 chatId, qint64 fromMessageId = 0);
+  Q_INVOKABLE void loadSecondaryConversation(qint64 chatId, qint64 fromMessageId = 0);
+  Q_INVOKABLE void closeSecondaryConversation();
   Q_INVOKABLE void sendMessage(qint64 chatId, const QString &text, qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void viewMessage(qint64 chatId, qint64 messageId);
@@ -44,6 +50,10 @@ public:
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;
+
+  QVariantList secondaryConversationMessages() const;
+  MessageListModel *secondaryMessageModel() { return &m_secondaryMessageModel; }
+  bool secondaryTyping() const;
 
 signals:
   void versionReceived(const QString &version);
@@ -60,6 +70,8 @@ signals:
   void messageReceived(qint64 chatId, const QVariantMap &message);
   void chatReadOutboxUpdated(qint64 chatId, qint64 lastReadOutboxMessageId);
   void typingChanged();
+  void secondaryConversationMessagesChanged();
+  void secondaryTypingChanged();
 
 private:
   TelegramWorker m_worker;
@@ -68,9 +80,16 @@ private:
   QString m_qrCodeImagePath;
   int m_authenticationCodeLength = 5;
   int m_authenticationCodeTimeout = 60;
+
   QVariantList m_conversationMessages;
   MessageListModel m_messageModel;
   qint64 m_activeChatId = 0;
   bool m_typing = false;
+
+  QVariantList m_secondaryConversationMessages;
+  MessageListModel m_secondaryMessageModel;
+  qint64 m_secondaryActiveChatId = 0;
+  bool m_secondaryTyping = false;
+
   QHash<qint64, QString> m_chatTitles;
 };

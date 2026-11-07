@@ -15,6 +15,7 @@ Item {
   readonly property real headerTitleWidth: chatsHeaderLabel.implicitWidth + (anchors.margins ? anchors.margins * 2 : 28)
 
   signal chatSelected(var chatId)
+  signal openInSplitRequested(var chatId)
 
   NewFolderDialog {
     id: newFolderDialog
@@ -170,8 +171,6 @@ Item {
             visible: chatDelegate.isSelected || chatDelegate.hovered
           }
         }
-
-        onClicked: root.chatSelected(chatDelegate.chatId)
 
         contentItem: RowLayout {
           spacing: root.compactMode ? 0 : 11
@@ -341,14 +340,55 @@ Item {
           }
         }
 
-        // Right click context menu to organize chat
+        // Mouse Area for handling click, right-click, and drag-and-drop
         MouseArea {
+          id: delegateMouseArea
           anchors.fill: parent
-          acceptedButtons: Qt.RightButton
-          onClicked: {
-            chatContextMenu.targetChatId = chatDelegate.chatId
-            chatContextMenu.targetChatName = chatDelegate.name
-            chatContextMenu.popup()
+          acceptedButtons: Qt.LeftButton | Qt.RightButton
+          drag.target: dragProxy
+          drag.axis: Drag.XAndYAxis
+
+          Item {
+            id: dragProxy
+            width: 44
+            height: 44
+            Drag.active: delegateMouseArea.drag.active
+            Drag.source: chatDelegate
+            Drag.hotSpot.x: 22
+            Drag.hotSpot.y: 22
+            Drag.keys: ["silkite/chat"]
+
+            property var dragChatId: chatDelegate.chatId
+            property string dragChatName: chatDelegate.name
+
+            // Visual feedback floating with mouse while dragging
+            Rectangle {
+              anchors.fill: parent
+              radius: 22
+              color: chatDelegate.avatarColor
+              opacity: 0.85
+              border.color: Theme.accent
+              border.width: 2
+              visible: delegateMouseArea.drag.active
+
+              Label {
+                anchors.centerIn: parent
+                text: chatDelegate.initials
+                color: "#FFFFFF"
+                font.bold: true
+                font.pixelSize: 14
+              }
+            }
+          }
+
+          onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+              chatContextMenu.targetChatId = chatDelegate.chatId
+              chatContextMenu.targetChatName = chatDelegate.name
+              chatContextMenu.popup()
+            } else if (mouse.button === Qt.LeftButton) {
+              root.chatSelected(chatDelegate.chatId)
+            }
           }
         }
       }
@@ -386,6 +426,25 @@ Item {
               border.color: Qt.rgba(1, 1, 1, 0.08)
               border.width: 1
             }
+          }
+        }
+
+        MenuItem {
+          text: "Open in Split Pane"
+          contentItem: Text {
+            text: parent.text
+            color: Theme.primaryText
+            font.pixelSize: 13
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 12
+            rightPadding: 12
+          }
+          background: Rectangle {
+            color: parent.highlighted ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+            radius: 8
+          }
+          onTriggered: {
+            root.openInSplitRequested(chatContextMenu.targetChatId)
           }
         }
 

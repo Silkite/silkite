@@ -80,6 +80,38 @@ ApplicationWindow {
   }
   property int chatRevision: 0
 
+  // Secondary Split Pane properties
+  property bool splitPaneActive: false
+  property var secondarySelectedChatId: 0
+  property var secondarySelectedChat: {
+    chatRevision;
+    if (!secondarySelectedChatId)
+      return ({})
+    return chatListModel.chatById(secondarySelectedChatId)
+  }
+  readonly property bool canEnableSplitPane: width >= (initialDefaultWidth * 0.6)
+  property real primaryPaneRatio: 0.5
+  property bool paneSplitterDragging: false
+
+  onWidthChanged: {
+    if (!canEnableSplitPane && splitPaneActive) {
+      splitPaneActive = false
+    }
+  }
+
+  function openInSecondaryPane(chatId) {
+    if (!canEnableSplitPane) return
+    secondarySelectedChatId = chatId
+    splitPaneActive = true
+    telegramClient.loadSecondaryConversation(chatId)
+  }
+
+  function closeSecondaryPane() {
+    splitPaneActive = false
+    secondarySelectedChatId = 0
+    telegramClient.closeSecondaryConversation()
+  }
+
   property bool phoneLoginStarted: false
   property bool phoneSubmitted: false
   property int resendSeconds: 0
@@ -941,6 +973,45 @@ ApplicationWindow {
           Layout.fillWidth: true
         }
 
+        // Toggle Split Pane button
+        ToolButton {
+          visible: window.canEnableSplitPane
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/split-pane.svg"
+          icon.width: 18
+          icon.height: 18
+          icon.color: window.splitPaneActive ? Theme.accent : Theme.primaryText
+          focusPolicy: Qt.NoFocus
+          padding: 0
+          implicitWidth: 28
+          implicitHeight: 28
+          ToolTip.visible: hovered
+          ToolTip.text: window.splitPaneActive ? "Close split pane" : "Open split pane"
+          ToolTip.delay: 400
+          background: Rectangle {
+            radius: 8
+            color: window.splitPaneActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : (parent.hovered ? Theme.controlBackground : "transparent")
+            border.color: window.splitPaneActive ? Theme.accent : (parent.hovered ? Theme.divider : "transparent")
+            border.width: 1
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: 7
+              color: "transparent"
+              border.color: Qt.rgba(1, 1, 1, 0.08)
+              border.width: 1
+              visible: parent.parent.hovered
+            }
+          }
+          onClicked: {
+            if (window.splitPaneActive) {
+              window.closeSecondaryPane()
+            } else {
+              window.splitPaneActive = true
+            }
+          }
+        }
+
         ToolButton {
           icon.source: "qrc:/qt/qml/Silkite/assets/icons/panel-left.svg"
           icon.width: 20
@@ -1084,6 +1155,10 @@ ApplicationWindow {
               window.chatListAutoExpanded = false
             }
           }
+
+          onOpenInSplitRequested: function(chatId) {
+            window.openInSecondaryPane(chatId)
+          }
         }
 
         // Draggable right edge splitter to resize chatbar (disabled when app width is <= 50%)
@@ -1144,7 +1219,7 @@ ApplicationWindow {
         }
       }
 
-      // Reserved Conversation Panel Container (same height & same border roundness)
+      // Reserved Conversation Area (Supports horizontal split with dual conversation panels)
       Item {
         id: conversationReservedArea
         anchors.top: parent.top
@@ -1156,46 +1231,405 @@ ApplicationWindow {
         anchors.leftMargin: 10
         anchors.rightMargin: 10
 
-        ConversationPanel {
-          anchors.fill: parent
-          chatId: window.selectedChatId || 0
-          chatName: window.selectedChat.name || ""
-          chatInitials: window.selectedChat.initials || "?"
-          avatarColor: window.selectedChat.avatarColor || "#526C8A"
-          avatarPath: window.selectedChat.avatarPath || ""
-          lastMessage: window.selectedChat.lastMessage || ""
-          statusText: window.selectedChat.statusText || ""
-          isOnline: window.selectedChat.isOnline || false
-          messageModel: telegramClient.messageModel
-          messages: telegramClient.conversationMessages
-          typing: telegramClient.typing
-          appVersion: appController.appVersion
+        readonly property real availablePanesWidth: width - (window.splitPaneActive ? 18 : 0)
 
-          onStartMessaging: {
-            var firstChat = chatListModel.chatAt(0)
-            if (firstChat.chatId === undefined)
-              return
-            window.chatListExpanded = true
-            window.chatListAutoExpanded = false
-            window.selectedChatId = firstChat.chatId
-            telegramClient.loadConversation(firstChat.chatId)
+        // Primary Conversation Pane
+        Item {
+          id: primaryPaneContainer
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.left: parent.left
+          width: window.splitPaneActive
+                 ? Math.max(300, Math.min(conversationReservedArea.availablePanesWidth - 300, conversationReservedArea.availablePanesWidth * window.primaryPaneRatio))
+                 : parent.width
+
+          ConversationPanel {
+            anchors.fill: parent
+            chatId: window.selectedChatId || 0
+            chatName: window.selectedChat.name || ""
+            chatInitials: window.selectedChat.initials || "?"
+            avatarColor: window.selectedChat.avatarColor || "#526C8A"
+            avatarPath: window.selectedChat.avatarPath || ""
+            lastMessage: window.selectedChat.lastMessage || ""
+            statusText: window.selectedChat.statusText || ""
+            isOnline: window.selectedChat.isOnline || false
+            messageModel: telegramClient.messageModel
+            messages: telegramClient.conversationMessages
+            typing: telegramClient.typing
+            appVersion: appController.appVersion
+            isSecondaryPane: false
+
+            onStartMessaging: {
+              var firstChat = chatListModel.chatAt(0)
+              if (firstChat.chatId === undefined)
+                return
+              window.chatListExpanded = true
+              window.chatListAutoExpanded = false
+              window.selectedChatId = firstChat.chatId
+              telegramClient.loadConversation(firstChat.chatId)
+            }
+
+            onSendMessageRequested: function(text, replyToMessageId, quoteText) {
+              if (window.selectedChatId) {
+                telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
+              }
+            }
+
+            onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
+              if (window.selectedChatId) {
+                telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
+              }
+            }
+
+            onToggleReactionRequested: function(messageId, emoji, isChosen) {
+              if (window.selectedChatId && messageId) {
+                telegramClient.toggleReaction(window.selectedChatId, messageId, emoji, isChosen)
+              }
+            }
+          }
+        }
+
+        // Draggable Splitter Divider between Primary and Secondary Panes
+        Item {
+          id: paneSplitter
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.left: primaryPaneContainer.right
+          width: 18
+          visible: window.splitPaneActive
+          z: 35
+
+          Rectangle {
+            anchors.centerIn: parent
+            width: 3
+            height: 48
+            radius: 1.5
+            color: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? Theme.accent : Theme.divider
+            opacity: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? 1.0 : 0.45
+            Behavior on opacity { NumberAnimation { duration: 150 } }
           }
 
-          onSendMessageRequested: function(text, replyToMessageId, quoteText) {
-            if (window.selectedChatId) {
-              telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
+          MouseArea {
+            id: paneSplitterMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.SplitHCursor
+            preventStealing: true
+
+            property real startX: 0
+            property real initialPrimaryWidth: 0
+
+            onPressed: function(mouse) {
+              startX = mouse.x
+              initialPrimaryWidth = primaryPaneContainer.width
+              window.paneSplitterDragging = true
+            }
+
+            onPositionChanged: function(mouse) {
+              if (window.paneSplitterDragging) {
+                var delta = mouse.x - startX
+                var newW = Math.max(300, Math.min(conversationReservedArea.availablePanesWidth - 300, initialPrimaryWidth + delta))
+                window.primaryPaneRatio = newW / Math.max(1, conversationReservedArea.availablePanesWidth)
+              }
+            }
+
+            onReleased: {
+              window.paneSplitterDragging = false
+            }
+
+            onCanceled: {
+              window.paneSplitterDragging = false
+            }
+          }
+        }
+
+        // Secondary Conversation Pane Container
+        Item {
+          id: secondaryPaneContainer
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.left: paneSplitter.right
+          anchors.right: parent.right
+          visible: window.splitPaneActive
+
+          // Drop target for dragging and dropping chats from chat list
+          DropArea {
+            id: chatDropArea
+            anchors.fill: parent
+            keys: ["silkite/chat"]
+
+            onDropped: function(drop) {
+              if (drop.source && drop.source.chatId !== undefined) {
+                window.openInSecondaryPane(drop.source.chatId)
+                drop.accept()
+              }
             }
           }
 
-          onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
-            if (window.selectedChatId) {
-              telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
+          // Active conversation panel if secondarySelectedChatId is set
+          ConversationPanel {
+            anchors.fill: parent
+            visible: window.secondarySelectedChatId !== 0 && window.secondarySelectedChat.name !== undefined
+            chatId: window.secondarySelectedChatId || 0
+            chatName: window.secondarySelectedChat.name || ""
+            chatInitials: window.secondarySelectedChat.initials || "?"
+            avatarColor: window.secondarySelectedChat.avatarColor || "#526C8A"
+            avatarPath: window.secondarySelectedChat.avatarPath || ""
+            lastMessage: window.secondarySelectedChat.lastMessage || ""
+            statusText: window.secondarySelectedChat.statusText || ""
+            isOnline: window.secondarySelectedChat.isOnline || false
+            messageModel: telegramClient.secondaryMessageModel
+            messages: telegramClient.secondaryConversationMessages
+            typing: telegramClient.secondaryTyping
+            appVersion: appController.appVersion
+            isSecondaryPane: true
+
+            onClosePaneRequested: {
+              window.closeSecondaryPane()
+            }
+
+            onSendMessageRequested: function(text, replyToMessageId, quoteText) {
+              if (window.secondarySelectedChatId) {
+                telegramClient.sendMessage(window.secondarySelectedChatId, text, replyToMessageId || 0, quoteText || "")
+              }
+            }
+
+            onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
+              if (window.secondarySelectedChatId) {
+                telegramClient.sendMedia(window.secondarySelectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
+              }
+            }
+
+            onToggleReactionRequested: function(messageId, emoji, isChosen) {
+              if (window.secondarySelectedChatId && messageId) {
+                telegramClient.toggleReaction(window.secondarySelectedChatId, messageId, emoji, isChosen)
+              }
             }
           }
 
-          onToggleReactionRequested: function(messageId, emoji, isChosen) {
-            if (window.selectedChatId && messageId) {
-              telegramClient.toggleReaction(window.selectedChatId, messageId, emoji, isChosen)
+          // Empty state when no chat is selected for the second pane
+          Item {
+            id: secondaryEmptyState
+            anchors.fill: parent
+            visible: window.secondarySelectedChatId === 0 || window.secondarySelectedChat.name === undefined
+
+            Rectangle {
+              id: emptyStateGlass
+              anchors.fill: parent
+              radius: 18
+              color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
+              border.color: chatDropArea.containsDrag ? Theme.accent : Theme.divider
+              border.width: chatDropArea.containsDrag ? 2 : 1
+
+              Behavior on border.color { ColorAnimation { duration: 150 } }
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 17
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+              }
+            }
+
+            // Top close button on empty state
+            ToolButton {
+              anchors.top: parent.top
+              anchors.right: parent.right
+              anchors.margins: 12
+              icon.source: "qrc:/qt/qml/Silkite/assets/icons/close.svg"
+              icon.width: 18
+              icon.height: 18
+              icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+              focusPolicy: Qt.NoFocus
+              implicitWidth: 32
+              implicitHeight: 32
+              ToolTip.visible: hovered
+              ToolTip.text: "Close split pane"
+              background: Rectangle {
+                radius: 8
+                color: parent.hovered ? Theme.accent : "transparent"
+              }
+              onClicked: window.closeSecondaryPane()
+            }
+
+            ColumnLayout {
+              anchors.centerIn: parent
+              spacing: 14
+              width: Math.min(320, parent.width - 40)
+
+              // Decorative icon
+              Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                width: 56
+                height: 56
+                radius: 28
+                color: chatDropArea.containsDrag ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.controlBackground
+                border.color: chatDropArea.containsDrag ? Theme.accent : Theme.divider
+                border.width: 1
+
+                Image {
+                  anchors.centerIn: parent
+                  width: 26
+                  height: 26
+                  source: "qrc:/qt/qml/Silkite/assets/icons/split-pane.svg"
+                  fillMode: Image.PreserveAspectFit
+                }
+              }
+
+              Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: chatDropArea.containsDrag ? "Drop chat here to open" : "Secondary Chat Pane"
+                font.bold: true
+                font.pixelSize: 16
+                color: chatDropArea.containsDrag ? Theme.accent : Theme.primaryText
+              }
+
+              Label {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: "Select a chat from the available list below, or drag & drop any chat here from the chats list."
+                font.pixelSize: 12
+                color: Theme.secondaryText
+              }
+
+              Button {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Choose Chat..."
+                implicitHeight: 36
+                onClicked: chatPickerPopup.open()
+
+                contentItem: Label {
+                  text: parent.text
+                  color: Theme.accentText
+                  font.weight: Font.DemiBold
+                  horizontalAlignment: Text.AlignHCenter
+                  verticalAlignment: Text.AlignVCenter
+                  leftPadding: 16
+                  rightPadding: 16
+                }
+
+                background: Rectangle {
+                  radius: height / 2
+                  color: parent.pressed ? Qt.darker(Theme.accent, 1.15) : (parent.hovered ? Qt.lighter(Theme.accent, 1.08) : Theme.accent)
+                }
+              }
+            }
+
+            // Chat Selector Popup from available chatListModel
+            Popup {
+              id: chatPickerPopup
+              anchors.centerIn: parent
+              width: Math.min(320, parent.width - 24)
+              implicitHeight: 380
+              padding: 12
+              modal: true
+              focus: true
+
+              background: Item {
+                Rectangle {
+                  anchors.fill: parent
+                  radius: 14
+                  color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.96)
+                  border.color: Theme.divider
+                  border.width: 1
+
+                  Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: 13
+                    color: "transparent"
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+                  }
+                }
+              }
+
+              contentItem: ColumnLayout {
+                spacing: 10
+
+                Label {
+                  text: "Select Chat for Split Pane"
+                  font.bold: true
+                  font.pixelSize: 14
+                  color: Theme.primaryText
+                  Layout.alignment: Qt.AlignLeft
+                }
+
+                ListView {
+                  id: pickerListView
+                  Layout.fillWidth: true
+                  Layout.fillHeight: true
+                  clip: true
+                  model: chatListModel
+                  spacing: 4
+
+                  delegate: ItemDelegate {
+                    width: pickerListView.width
+                    height: 48
+
+                    required property string name
+                    required property var chatId
+                    required property string initials
+                    required property string avatarColor
+
+                    background: Rectangle {
+                      radius: 8
+                      color: parent.hovered ? Theme.controlBackground : "transparent"
+                    }
+
+                    contentItem: RowLayout {
+                      spacing: 10
+                      Rectangle {
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        radius: 16
+                        color: avatarColor || Theme.accent
+                        Label {
+                          anchors.centerIn: parent
+                          text: initials || "?"
+                          color: "#FFFFFF"
+                          font.bold: true
+                          font.pixelSize: 12
+                        }
+                      }
+                      Label {
+                        Layout.fillWidth: true
+                        text: name
+                        color: Theme.primaryText
+                        font.pixelSize: 13
+                        elide: Text.ElideRight
+                      }
+                    }
+
+                    onClicked: {
+                      window.openInSecondaryPane(chatId)
+                      chatPickerPopup.close()
+                    }
+                  }
+                }
+
+                Button {
+                  Layout.alignment: Qt.AlignRight
+                  text: "Cancel"
+                  implicitHeight: 30
+                  onClicked: chatPickerPopup.close()
+                  contentItem: Label {
+                    text: parent.text
+                    color: Theme.secondaryText
+                    font.pixelSize: 12
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                  }
+                  background: Rectangle {
+                    radius: 6
+                    color: parent.hovered ? Theme.controlBackground : "transparent"
+                  }
+                }
+              }
             }
           }
         }
