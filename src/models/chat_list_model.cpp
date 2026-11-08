@@ -3,9 +3,14 @@
 
 #include <QHash>
 #include <QVariantMap>
+#include <QTimer>
 #include <algorithm>
 
 ChatListModel::ChatListModel(QObject *parent) : QAbstractListModel(parent) {
+  m_batchTimer = new QTimer(this);
+  m_batchTimer->setSingleShot(true);
+  m_batchTimer->setInterval(16); // ~60fps batching
+  connect(m_batchTimer, &QTimer::timeout, this, &ChatListModel::applyBatchUpdate);
   updateFilter();
 }
 
@@ -190,7 +195,18 @@ QVariantMap ChatListModel::chatById(qint64 chatId) const {
 }
 
 void ChatListModel::clearChats() {
+  if (m_batchTimer && m_batchTimer->isActive()) {
+    m_batchTimer->stop();
+  }
   beginResetModel(); m_chats.clear(); m_filteredIndices.clear(); endResetModel();
+}
+
+void ChatListModel::applyBatchUpdate() {
+  if (m_needsSort) {
+    std::sort(m_chats.begin(), m_chats.end(), [](const Chat &a, const Chat &b) { return a.order > b.order; });
+    m_needsSort = false;
+  }
+  updateFilter();
 }
 
 void ChatListModel::upsertChat(const QVariantMap &v) {
@@ -214,6 +230,9 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   }
   if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
   if (i < 0) m_chats.append(c); else m_chats[i] = c;
-  std::sort(m_chats.begin(), m_chats.end(), [](const Chat &a, const Chat &b) { return a.order > b.order; });
-  updateFilter();
+
+  m_needsSort = true;
+  if (!m_batchTimer->isActive()) {
+    m_batchTimer->start();
+  }
 }

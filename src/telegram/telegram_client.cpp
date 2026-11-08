@@ -405,6 +405,10 @@ void TelegramClient::createPrivateChatForUser(qint64 userId) {
 void TelegramClient::deleteContact(qint64 userId) {
   m_worker.deleteContact(userId);
 }
+
+void TelegramClient::loadContacts() {
+  m_worker.loadContacts();
+}
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }
 QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }

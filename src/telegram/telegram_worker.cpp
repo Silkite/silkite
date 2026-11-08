@@ -591,6 +591,12 @@ void TelegramWorker::deleteContact(qint64 userId) {
   enqueue(std::move(cmd));
 }
 
+void TelegramWorker::loadContacts() {
+  Command cmd;
+  cmd.type = CommandType::LoadContacts;
+  enqueue(std::move(cmd));
+}
+
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
   m_commands.enqueue(std::move(command));
@@ -855,11 +861,17 @@ void TelegramWorker::run() {
           contactUserIds.remove(uid);
           emit contactRemoved(uid);
         }
+        if (command.type == CommandType::LoadContacts) {
+          send(activeClientId, td::td_api::make_object<td::td_api::getContacts>());
+        }
       }
     }
 
-    auto response = manager.receive(0.2);
-    if (!response.object) continue;
+    auto response = manager.receive(0.0);
+    if (!response.object) {
+      response = manager.receive(0.02);
+      if (!response.object) continue;
+    }
     const bool isQrClient = response.client_id == qrClientId;
     const bool isPhoneClient = response.client_id == phoneClientId;
 
@@ -915,11 +927,14 @@ void TelegramWorker::run() {
         phonePending.clear();
       }
 
-      if (stateId == td::td_api::authorizationStateReady::ID && response.client_id == activeClientId) {
+      if (stateId == td::td_api::authorizationStateReady::ID) {
+        if (activeClientId != response.client_id) {
+          activeClientId = response.client_id;
+          emit authorizationStateChanged(QStringLiteral("ready"));
+        }
         emit chatsReset();
         emit contactsReset();
-        send(activeClientId, td::td_api::make_object<td::td_api::loadChats>(td::td_api::make_object<td::td_api::chatListMain>(), 100));
-        send(activeClientId, td::td_api::make_object<td::td_api::getContacts>());
+        send(activeClientId, td::td_api::make_object<td::td_api::loadChats>(td::td_api::make_object<td::td_api::chatListMain>(), 30));
       }
 
       if (isQrClient && stateId == td::td_api::authorizationStateWaitOtherDeviceConfirmation::ID) {
@@ -1175,8 +1190,6 @@ void TelegramWorker::run() {
             const qint64 cid = userPrivateChats.value(uid);
             cmap["chatId"] = cid;
             cmap["hasChatHistory"] = chatHasHistory.value(cid, false);
-          } else {
-            send(activeClientId, td::td_api::make_object<td::td_api::createPrivateChat>(uid, false));
           }
           emit contactUpdated(cmap);
         } else if (contactUserIds.contains(uid)) {
@@ -1219,8 +1232,6 @@ void TelegramWorker::run() {
           const qint64 cid = userPrivateChats.value(uid);
           cmap["chatId"] = cid;
           cmap["hasChatHistory"] = chatHasHistory.value(cid, false);
-        } else {
-          send(activeClientId, td::td_api::make_object<td::td_api::createPrivateChat>(uid, false));
         }
         emit contactUpdated(cmap);
       }
@@ -1357,9 +1368,6 @@ void TelegramWorker::run() {
       for (const auto uid : uList->user_ids_) {
         contactUserIds.insert(uid);
         send(activeClientId, td::td_api::make_object<td::td_api::getUser>(uid));
-        if (!userPrivateChats.contains(uid)) {
-          send(activeClientId, td::td_api::make_object<td::td_api::createPrivateChat>(uid, false));
-        }
       }
       continue;
     }
@@ -1369,9 +1377,6 @@ void TelegramWorker::run() {
       for (const auto uid : imp->user_ids_) {
         contactUserIds.insert(uid);
         send(activeClientId, td::td_api::make_object<td::td_api::getUser>(uid));
-        if (!userPrivateChats.contains(uid)) {
-          send(activeClientId, td::td_api::make_object<td::td_api::createPrivateChat>(uid, false));
-        }
       }
       continue;
     }

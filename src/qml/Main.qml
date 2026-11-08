@@ -231,11 +231,16 @@ ApplicationWindow {
     onTriggered: telegramClient.requestQrLogin()
   }
 
+  readonly property bool isLoginRequired: {
+    const s = telegramClient.authorizationState
+    return s === "waitPhoneNumber" || s === "waitCode" || s === "waitOtherDeviceConfirmation" || s === "waitPassword"
+  }
+
   Rectangle {
     anchors.fill: parent
     color: Theme.windowBackground
     z: 10
-    visible: telegramClient.authorizationState !== "ready"
+    visible: window.isLoginRequired
 
     ColumnLayout {
       anchors.centerIn: parent
@@ -859,7 +864,7 @@ ApplicationWindow {
   ComboBox {
     id: globalThemeSelector
     z: 30
-    visible: telegramClient.authorizationState !== "ready"
+    visible: window.isLoginRequired
     anchors.right: parent.right
     anchors.bottom: parent.bottom
     anchors.rightMargin: 18
@@ -1097,6 +1102,9 @@ ApplicationWindow {
 
           onNavigationRequested: function(page) {
             window.activeSection = page
+            if (page === "contacts") {
+              telegramClient.loadContacts()
+            }
             console.log("Navigation:", page)
           }
         }

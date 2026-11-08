@@ -53,6 +53,7 @@ public:
   Q_INVOKABLE void createNewGroup(const QString &title, const QVariantList &userIds);
   Q_INVOKABLE void createPrivateChatForUser(qint64 userId);
   Q_INVOKABLE void deleteContact(qint64 userId);
+  Q_INVOKABLE void loadContacts();
 
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }

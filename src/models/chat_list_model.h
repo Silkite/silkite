@@ -3,6 +3,7 @@
 #include <QString>
 #include <QVector>
 #include <QVariantMap>
+#include <QTimer>
 #include "chat_organization_manager.h"
 
 struct Chat {
@@ -68,12 +69,17 @@ signals:
   void filterTextChanged();
   void organizationManagerChanged();
 
+private slots:
+  void applyBatchUpdate();
+
 private:
   QVector<Chat> m_chats;
   QVector<int> m_filteredIndices;
 
   QString m_filterText;
   ChatOrganizationManager *m_orgManager = nullptr;
+  QTimer *m_batchTimer = nullptr;
+  bool m_needsSort = false;
 
   void updateFilter();
   int indexOfChat(qint64 chatId) const;

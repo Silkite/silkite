@@ -30,6 +30,7 @@ public:
   void createNewGroup(const QString &title, const QList<qint64> &userIds);
   void createPrivateChatForUser(qint64 userId);
   void deleteContact(qint64 userId);
+  void loadContacts();
 
 protected:
   void run() override;
@@ -78,7 +79,8 @@ private:
     AddContact,
     CreateGroup,
     CreatePrivateChat,
-    DeleteContact
+    DeleteContact,
+    LoadContacts
   };
   struct Command {
     CommandType type;
