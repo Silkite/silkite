@@ -6,6 +6,7 @@
 #include "app_controller.h"
 #include "models/chat_list_model.h"
 #include "models/chat_organization_manager.h"
+#include "models/contact_list_model.h"
 #include "theme/theme_manager.h"
 #include "telegram/telegram_client.h"
 
@@ -24,6 +25,8 @@ int main(int argc, char *argv[]) {
   ChatListModel chatListModel;
   chatListModel.setOrganizationManager(&chatOrganizationManager);
 
+  ContactListModel contactListModel;
+
   TelegramClient telegramClient;
 
   // listen tdlib
@@ -37,12 +40,21 @@ int main(int argc, char *argv[]) {
   QObject::connect(&telegramClient, &TelegramClient::chatsReset, &chatListModel, &ChatListModel::clearChats);
   QObject::connect(&telegramClient, &TelegramClient::chatUpdated, &chatListModel, &ChatListModel::upsertChat);
 
+  // Connect contacts signals
+  QObject::connect(&telegramClient, &TelegramClient::contactsReset, &contactListModel, &ContactListModel::clearContacts);
+  QObject::connect(&telegramClient, &TelegramClient::contactUpdated, &contactListModel, &ContactListModel::upsertContact);
+  QObject::connect(&telegramClient, &TelegramClient::contactStatusUpdated, &contactListModel, &ContactListModel::updateContactStatus);
+  QObject::connect(&telegramClient, &TelegramClient::contactAvatarUpdated, &contactListModel, &ContactListModel::updateContactAvatar);
+  QObject::connect(&telegramClient, &TelegramClient::contactChatHistoryChecked, &contactListModel, &ContactListModel::setContactHasChatHistory);
+  QObject::connect(&telegramClient, &TelegramClient::contactRemoved, &contactListModel, &ContactListModel::removeContact);
+
   QQmlApplicationEngine engine;
 
   engine.rootContext()->setContextProperty("appController", &appController);
   engine.rootContext()->setContextProperty("Theme", &themeManager);
   engine.rootContext()->setContextProperty("chatOrganizationManager", &chatOrganizationManager);
   engine.rootContext()->setContextProperty("chatListModel", &chatListModel);
+  engine.rootContext()->setContextProperty("contactListModel", &contactListModel);
   engine.rootContext()->setContextProperty("telegramClient", &telegramClient);
 
   QObject::connect(

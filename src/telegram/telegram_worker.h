@@ -26,6 +26,11 @@ public:
   void viewMessage(qint64 chatId, qint64 messageId);
   void toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen);
 
+  void addContact(const QString &phoneNumber, const QString &firstName, const QString &lastName);
+  void createNewGroup(const QString &title, const QList<qint64> &userIds);
+  void createPrivateChatForUser(qint64 userId);
+  void deleteContact(qint64 userId);
+
 protected:
   void run() override;
 
@@ -46,8 +51,35 @@ signals:
   void messageFileUpdated(qint64 chatId, qint64 messageId, const QString &filePath);
   void messageReactionsUpdated(qint64 chatId, qint64 messageId, const QVariantList &reactions);
 
+  // Contacts signals
+  void contactsReset();
+  void contactUpdated(const QVariantMap &contact);
+  void contactStatusUpdated(qint64 userId, const QString &statusText, bool isOnline, qint64 lastSeenSecs);
+  void contactAvatarUpdated(qint64 userId, const QString &avatarPath);
+  void contactChatHistoryChecked(qint64 userId, qint64 chatId, bool hasHistory);
+  void contactRemoved(qint64 userId);
+  void privateChatCreated(qint64 userId, qint64 chatId);
+  void groupChatCreated(qint64 chatId);
+
 private:
-  enum class CommandType { PhoneNumber, Code, QrLogin, ResendCode, SelectPhone, SelectQr, History, SendMessage, SendMedia, ViewMessage, AddReaction, RemoveReaction };
+  enum class CommandType {
+    PhoneNumber,
+    Code,
+    QrLogin,
+    ResendCode,
+    SelectPhone,
+    SelectQr,
+    History,
+    SendMessage,
+    SendMedia,
+    ViewMessage,
+    AddReaction,
+    RemoveReaction,
+    AddContact,
+    CreateGroup,
+    CreatePrivateChat,
+    DeleteContact
+  };
   struct Command {
     CommandType type;
     QString value;
@@ -55,6 +87,7 @@ private:
     qint64 messageId = 0;
     QString extra;
     QString quote;
+    QList<qint64> userIds;
   };
   void enqueue(Command command);
   QMutex m_mutex;

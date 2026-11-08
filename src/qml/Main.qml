@@ -196,6 +196,25 @@ ApplicationWindow {
       window.resendSeconds = telegramClient.authenticationCodeTimeout
       window.resendReady = true
     }
+    function onPrivateChatCreated(userId, chatId) {
+      if (contactListPane.selectedUserId === userId) {
+        window.selectedChatId = chatId
+        telegramClient.loadConversation(chatId)
+        if (window.compactLayout) {
+          window.chatListExpanded = false
+          window.chatListAutoExpanded = false
+        }
+      }
+    }
+    function onGroupChatCreated(chatId) {
+      window.activeSection = "chats"
+      window.selectedChatId = chatId
+      telegramClient.loadConversation(chatId)
+      if (window.compactLayout) {
+        window.chatListExpanded = false
+        window.chatListAutoExpanded = false
+      }
+    }
   }
 
   Timer {
@@ -1143,6 +1162,7 @@ ApplicationWindow {
           anchors.fill: parent
           chatModel: chatListModel
           selectedChatId: window.selectedChatId
+          visible: window.activeSection !== "contacts"
 
           onPointerInsideChanged: {
             if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
@@ -1193,6 +1213,76 @@ ApplicationWindow {
 
             if (droppedInside && window.draggedChatData && window.draggedChatData.chatId) {
               window.openInSecondaryPane(window.draggedChatData.chatId)
+            }
+            window.isDraggingChatReplica = false
+            window.dragOverSecondaryPane = false
+            window.draggedChatData = null
+          }
+        }
+
+        ContactList {
+          id: contactListPane
+          anchors.fill: parent
+          contactModel: contactListModel
+          visible: window.activeSection === "contacts"
+
+          onPointerInsideChanged: {
+            if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
+              collapseChatListTimer.restart()
+          }
+
+          onContactSelected: function(userId, chatId) {
+            if (chatId && chatId !== 0) {
+              window.selectedChatId = chatId
+              telegramClient.loadConversation(chatId)
+              if (window.compactLayout) {
+                window.chatListExpanded = false
+                window.chatListAutoExpanded = false
+              }
+            } else {
+              telegramClient.createPrivateChatForUser(userId)
+            }
+          }
+
+          onOpenInSplitRequested: function(chatId) {
+            if (chatId && chatId !== 0) {
+              window.openInSecondaryPane(chatId)
+            }
+          }
+
+          onDragStarted: function(contactData, startPos) {
+            if (!window.canEnableSplitPane) return
+            if (!window.splitPaneActive) {
+              window.splitPaneActive = true
+            }
+            window.draggedChatData = contactData
+            window.dragReplicaTargetX = startPos.x - 40
+            window.dragReplicaTargetY = startPos.y - 30
+            window.isDraggingChatReplica = true
+          }
+
+          onDragMoved: function(globalPos) {
+            if (!window.isDraggingChatReplica) return
+            window.dragReplicaTargetX = globalPos.x - 40
+            window.dragReplicaTargetY = globalPos.y - 30
+
+            var secPos = secondaryPaneContainer.mapFromItem(null, globalPos.x, globalPos.y)
+            window.dragOverSecondaryPane = (secPos.x >= 0 && secPos.x <= secondaryPaneContainer.width &&
+                                            secPos.y >= 0 && secPos.y <= secondaryPaneContainer.height)
+          }
+
+          onDragEnded: function(globalPos) {
+            if (!window.isDraggingChatReplica) return
+            var secPos = secondaryPaneContainer.mapFromItem(null, globalPos.x, globalPos.y)
+            var droppedInside = (secPos.x >= 0 && secPos.x <= secondaryPaneContainer.width &&
+                                 secPos.y >= 0 && secPos.y <= secondaryPaneContainer.height)
+
+            if (droppedInside && window.draggedChatData) {
+              if (window.draggedChatData.chatId && window.draggedChatData.chatId !== 0) {
+                window.openInSecondaryPane(window.draggedChatData.chatId)
+              } else if (window.draggedChatData.userId) {
+                telegramClient.createPrivateChatForUser(window.draggedChatData.userId)
+              }
             }
             window.isDraggingChatReplica = false
             window.dragOverSecondaryPane = false

@@ -36,6 +36,8 @@ qt_add_executable(silkite
 
   src/models/chat_list_model.cpp
   src/models/chat_list_model.h
+  src/models/contact_list_model.cpp
+  src/models/contact_list_model.h
   src/models/chat_organization_manager.cpp
   src/models/chat_organization_manager.h
   src/models/message_list_model.cpp
@@ -56,6 +58,8 @@ qt_add_qml_module(silkite
     src/qml/Main.qml
     src/qml/Sidebar.qml
     src/qml/ChatList.qml
+    src/qml/ContactList.qml
+    src/qml/NewContactDialog.qml
     src/qml/ConversationPanel.qml
     src/qml/FolderBar.qml
     src/qml/NewFolderDialog.qml
@@ -65,6 +69,10 @@ qt_add_qml_module(silkite
     assets/logo-transparent.png
     assets/icons/chat.svg
     assets/icons/people.svg
+    assets/icons/people-team.svg
+    assets/icons/add.svg
+    assets/icons/checkmark.svg
+    assets/icons/arrow-left.svg
     assets/icons/call.svg
     assets/icons/video.svg
     assets/icons/settings.svg

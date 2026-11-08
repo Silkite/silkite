@@ -282,6 +282,17 @@ TelegramClient::TelegramClient(QObject *parent)
               emit qrCodeImagePathChanged();
             }
           });
+
+  // Connect contacts signals from worker
+  connect(&m_worker, &TelegramWorker::contactsReset, this, &TelegramClient::contactsReset);
+  connect(&m_worker, &TelegramWorker::contactUpdated, this, &TelegramClient::contactUpdated);
+  connect(&m_worker, &TelegramWorker::contactStatusUpdated, this, &TelegramClient::contactStatusUpdated);
+  connect(&m_worker, &TelegramWorker::contactAvatarUpdated, this, &TelegramClient::contactAvatarUpdated);
+  connect(&m_worker, &TelegramWorker::contactChatHistoryChecked, this, &TelegramClient::contactChatHistoryChecked);
+  connect(&m_worker, &TelegramWorker::contactRemoved, this, &TelegramClient::contactRemoved);
+  connect(&m_worker, &TelegramWorker::privateChatCreated, this, &TelegramClient::privateChatCreated);
+  connect(&m_worker, &TelegramWorker::groupChatCreated, this, &TelegramClient::groupChatCreated);
+
   connect(&m_worker, &TelegramWorker::authenticationCodeLengthChanged, this,
           [this](int length) {
             if (m_authenticationCodeLength != length) {
@@ -373,6 +384,26 @@ void TelegramClient::toggleReaction(qint64 chatId, qint64 messageId, const QStri
     // 2. Dispatch to TDLib worker
     m_worker.toggleReaction(chatId, messageId, emoji, isChosen);
   }
+}
+
+void TelegramClient::addContact(const QString &phoneNumber, const QString &firstName, const QString &lastName) {
+  m_worker.addContact(phoneNumber.trimmed(), firstName.trimmed(), lastName.trimmed());
+}
+
+void TelegramClient::createNewGroup(const QString &title, const QVariantList &userIds) {
+  QList<qint64> uids;
+  for (const auto &v : userIds) {
+    uids.append(v.toLongLong());
+  }
+  m_worker.createNewGroup(title.trimmed(), uids);
+}
+
+void TelegramClient::createPrivateChatForUser(qint64 userId) {
+  m_worker.createPrivateChatForUser(userId);
+}
+
+void TelegramClient::deleteContact(qint64 userId) {
+  m_worker.deleteContact(userId);
 }
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }

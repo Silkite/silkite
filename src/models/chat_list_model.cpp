@@ -130,6 +130,11 @@ void ChatListModel::updateFilter() {
   for (int i = 0; i < m_chats.size(); ++i) {
     const Chat &chat = m_chats.at(i);
 
+    // Active chats only: Must have an order > 0 in chatListMain
+    if (chat.order == 0) {
+      continue;
+    }
+
     // Folder filter check
     if (m_orgManager && !m_orgManager->isChatInActiveFolder(chat.id)) {
       continue;
@@ -205,7 +210,7 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   if (v.contains("isOnline")) c.isOnline = v.value("isOnline").toBool();
   if (v.contains("order")) {
     const qint64 order = v.value("order").toLongLong();
-    if (order > 0 || c.order == 0) c.order = order;
+    c.order = order;
   }
   if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
   if (i < 0) m_chats.append(c); else m_chats[i] = c;

@@ -47,6 +47,13 @@ public:
   Q_INVOKABLE void sendMedia(qint64 chatId, const QString &filePath, const QString &caption = QString(), qint64 replyToMessageId = 0, const QString &quoteText = QString());
   Q_INVOKABLE void viewMessage(qint64 chatId, qint64 messageId);
   Q_INVOKABLE void toggleReaction(qint64 chatId, qint64 messageId, const QString &emoji, bool isChosen);
+
+  // Contacts & Group methods
+  Q_INVOKABLE void addContact(const QString &phoneNumber, const QString &firstName, const QString &lastName);
+  Q_INVOKABLE void createNewGroup(const QString &title, const QVariantList &userIds);
+  Q_INVOKABLE void createPrivateChatForUser(qint64 userId);
+  Q_INVOKABLE void deleteContact(qint64 userId);
+
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;
@@ -72,6 +79,16 @@ signals:
   void typingChanged();
   void secondaryConversationMessagesChanged();
   void secondaryTypingChanged();
+
+  // Contacts & Group signals
+  void contactsReset();
+  void contactUpdated(const QVariantMap &contact);
+  void contactStatusUpdated(qint64 userId, const QString &statusText, bool isOnline, qint64 lastSeenSecs);
+  void contactAvatarUpdated(qint64 userId, const QString &avatarPath);
+  void contactChatHistoryChecked(qint64 userId, qint64 chatId, bool hasHistory);
+  void contactRemoved(qint64 userId);
+  void privateChatCreated(qint64 userId, qint64 chatId);
+  void groupChatCreated(qint64 chatId);
 
 private:
   TelegramWorker m_worker;
