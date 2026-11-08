@@ -49,6 +49,7 @@ public:
   Q_INVOKABLE bool deleteFolder(const QString &folderId);
   Q_INVOKABLE void moveChatToFolder(const QString &folderId, qint64 chatId);
   Q_INVOKABLE void removeChatFromFolder(const QString &folderId, qint64 chatId);
+  Q_INVOKABLE void removeChatFromAllFolders(qint64 chatId);
   Q_INVOKABLE void toggleChatInFolder(const QString &folderId, qint64 chatId);
   Q_INVOKABLE void resetFolders();
 

@@ -20,6 +20,8 @@ Item {
   property var messageModel: null
   property bool typing: false
   property bool isSecondaryPane: false
+  property bool canSendMessages: true
+  property string lastSentText: ""
 
   signal closePaneRequested()
   signal toggleSplitRequested()
@@ -123,6 +125,18 @@ Item {
     }
   }
 
+  Connections {
+    target: telegramClient
+    function onMessageSendFailed(failedChatId, error) {
+      if (failedChatId === root.chatId) {
+        if (messageInput.text === "" && root.lastSentText !== "") {
+          messageInput.text = root.lastSentText
+          root.lastSentText = ""
+        }
+      }
+    }
+  }
+
   property bool hasConversation: chatName !== ""
   property string appVersion: ""
   property color glassColor: Qt.rgba(1, 1, 1, 0.08)
@@ -154,6 +168,31 @@ Item {
   function closeReactionPicker() {
     reactionPickerVisible = false
     activeReactionMessageId = 0
+  }
+
+  // Error details popup state for failed message send
+  property string sendErrorText: ""
+  property real sendErrorPopupX: 0
+  property real sendErrorPopupY: 0
+
+  function openSendErrorPopup(errorText, item) {
+    sendErrorText = errorText || "Message failed to send"
+    var p = item.mapToItem(root, 0, 0)
+    var popupW = sendErrorPopup.width
+    var popupH = 90
+    var targetX = p.x - popupW + 24
+    sendErrorPopupX = Math.max(12, Math.min(root.width - popupW - 12, targetX))
+    if (p.y - popupH - 8 >= 8) {
+      sendErrorPopupY = p.y - popupH - 8
+    } else {
+      sendErrorPopupY = Math.min(root.height - popupH - 12, p.y + 24)
+    }
+    sendErrorPopup.open()
+  }
+
+  function closeSendErrorPopup() {
+    sendErrorPopup.close()
+    sendErrorText = ""
   }
 
   // Active composer panel popup state ("none", "emoji", "sticker", "gif")
@@ -728,9 +767,10 @@ Item {
             if (isSingleEmoji) return 100
             if (isSticker) return 180
             if (!isVisualMedia) return 0
+            var parentW = (msgDelegate.width > 0 ? msgDelegate.width : messageListView.width)
             var maxW = isAnimation
-              ? Math.min(240, parent.width * 0.48)
-              : Math.min(380, parent.width * 0.68)
+              ? Math.min(240, parentW * 0.48)
+              : Math.min(380, parentW * 0.68)
             var minW = isAnimation ? 140 : 220
             var baseScale = isAnimation ? 180 : 280
             var w = mData.mediaWidth || 0
@@ -788,7 +828,7 @@ Item {
 
           TextMetrics {
             id: metaMetrics
-            text: (mData.time || "") + (msgDelegate.isOutgoing && mData.status ? (" " + mData.status) : "")
+            text: (mData.time || "") + (msgDelegate.isOutgoing && mData.status ? (" " + mData.status) : "") + ((msgDelegate.isOutgoing && (Boolean(mData.sendError) || mData.status === "!")) ? "   " : "")
             font: metaTimeLabel.font
           }
 
@@ -805,7 +845,7 @@ Item {
           }
 
           // Desktop capped maximum bubble width (Telegram/iMessage style: ~440px or 68% of screen)
-          readonly property real maxBubbleWidth: Math.min(460, parent.width * 0.68)
+          readonly property real maxBubbleWidth: Math.min(460, (msgDelegate.width > 0 ? msgDelegate.width : messageListView.width) * 0.68)
 
           // Natural inline content width calculation
           readonly property real inlineNeededWidth: bubbleMetrics.width + metaMetrics.width + 42
@@ -920,6 +960,7 @@ Item {
               anchors.leftMargin: 14
               anchors.rightMargin: 12
               visible: msgDelegate.fitsSingleLine
+              z: 5
 
               Label {
                 id: singleLineText
@@ -937,7 +978,7 @@ Item {
                 id: singleMetaRow
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
+                spacing: 4
 
                 Label {
                   text: msgDelegate.mData.time || ""
@@ -946,10 +987,45 @@ Item {
                 }
 
                 Label {
-                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
+                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "" && msgDelegate.mData.status !== "!") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
+                }
+
+                Item {
+                  id: singleSendErrorIcon
+                  width: 14
+                  height: 14
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: msgDelegate.isOutgoing && (Boolean(msgDelegate.mData.sendError) || msgDelegate.mData.status === "!")
+                  z: 50
+
+                  Image {
+                    anchors.centerIn: parent
+                    source: "qrc:/qt/qml/Silkite/assets/icons/info.svg"
+                    width: 13
+                    height: 13
+                    sourceSize: Qt.size(13, 13)
+                    layer.enabled: true
+                    layer.effect: ColorOverlay {
+                      color: "#EB5757"
+                    }
+                  }
+
+                  MouseArea {
+                    id: singleSendErrorMouseArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    preventStealing: true
+                    propagateComposedEvents: false
+                    onClicked: function(mouse) {
+                      mouse.accepted = true
+                      root.openSendErrorPopup(msgDelegate.mData.sendError, singleSendErrorIcon)
+                    }
+                  }
                 }
               }
             }
@@ -1280,6 +1356,7 @@ Item {
               anchors.bottomMargin: 7
               visible: !msgDelegate.fitsSingleLine && !msgDelegate.isBorderlessMedia
               spacing: 6
+              z: 5
 
               // Reply preview bubble block
               Rectangle {
@@ -1627,7 +1704,7 @@ Item {
               Row {
                 anchors.right: parent.right
                 anchors.rightMargin: msgDelegate.isVisualMedia ? 10 : 0
-                spacing: 3
+                spacing: 4
                 visible: (msgDelegate.mData.time !== undefined && msgDelegate.mData.time !== "") || (msgDelegate.isOutgoing && msgDelegate.mData.status !== "")
 
                 Label {
@@ -1638,10 +1715,45 @@ Item {
                 }
 
                 Label {
-                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "") ? msgDelegate.mData.status : ""
+                  text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "" && msgDelegate.mData.status !== "!") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                   font.pixelSize: 11
                   visible: text.length > 0
+                }
+
+                Item {
+                  id: multiSendErrorIcon
+                  width: 14
+                  height: 14
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: msgDelegate.isOutgoing && (Boolean(msgDelegate.mData.sendError) || msgDelegate.mData.status === "!")
+                  z: 50
+
+                  Image {
+                    anchors.centerIn: parent
+                    source: "qrc:/qt/qml/Silkite/assets/icons/info.svg"
+                    width: 13
+                    height: 13
+                    sourceSize: Qt.size(13, 13)
+                    layer.enabled: true
+                    layer.effect: ColorOverlay {
+                      color: "#EB5757"
+                    }
+                  }
+
+                  MouseArea {
+                    id: multiSendErrorMouseArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    preventStealing: true
+                    propagateComposedEvents: false
+                    onClicked: function(mouse) {
+                      mouse.accepted = true
+                      root.openSendErrorPopup(msgDelegate.mData.sendError, multiSendErrorIcon)
+                    }
+                  }
                 }
               }
             }
@@ -1650,7 +1762,7 @@ Item {
             MouseArea {
               anchors.fill: parent
               acceptedButtons: Qt.LeftButton | Qt.RightButton
-              z: 20
+              z: 1
               cursorShape: Qt.ArrowCursor
               onClicked: function(mouse) {
                 var bubbleContentText = msgDelegate.mData.caption ? msgDelegate.mData.caption : (msgDelegate.mData.text || "")
@@ -1678,6 +1790,8 @@ Item {
               }
             }
           }
+
+
 
           // Message Reactions Badges Row (resting pills below bubble)
           Row {
@@ -2035,6 +2149,105 @@ Item {
 
   }
 
+  // Pop-up box attached to the info icon showing message send error
+  Popup {
+    id: sendErrorPopup
+    x: root.sendErrorPopupX
+    y: root.sendErrorPopupY
+    width: 270
+    modal: false
+    focus: false
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    padding: 0
+    topInset: 0
+    leftInset: 0
+    rightInset: 0
+    bottomInset: 0
+
+    background: Item {
+      // Drop shadow
+      Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.bottomMargin: -2
+        anchors.leftMargin: -1
+        anchors.rightMargin: -1
+        radius: errorPopupBody.radius + 1
+        color: Qt.rgba(0, 0, 0, 0.35)
+        z: -1
+      }
+
+      Rectangle {
+        id: errorPopupBody
+        anchors.fill: parent
+        radius: 12
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.98)
+        border.color: Qt.rgba(235/255, 87/255, 87/255, 0.6)
+        border.width: 1
+      }
+    }
+
+    contentItem: ColumnLayout {
+      id: errorPopupCol
+      spacing: 6
+      anchors.fill: parent
+      anchors.margins: 12
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+
+        Image {
+          source: "qrc:/qt/qml/Silkite/assets/icons/info.svg"
+          Layout.preferredWidth: 16
+          Layout.preferredHeight: 16
+          sourceSize: Qt.size(16, 16)
+          layer.enabled: true
+          layer.effect: ColorOverlay {
+            color: "#EB5757"
+          }
+        }
+
+        Label {
+          text: "Message Not Sent"
+          color: "#EB5757"
+          font.pixelSize: 12
+          font.weight: Font.DemiBold
+          Layout.fillWidth: true
+        }
+
+        Image {
+          source: "qrc:/qt/qml/Silkite/assets/icons/close.svg"
+          Layout.preferredWidth: 12
+          Layout.preferredHeight: 12
+          sourceSize: Qt.size(12, 12)
+          opacity: closeErrorMouseArea.containsMouse ? 1.0 : 0.6
+          layer.enabled: true
+          layer.effect: ColorOverlay {
+            color: Theme.secondaryText
+          }
+
+          MouseArea {
+            id: closeErrorMouseArea
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.closeSendErrorPopup()
+          }
+        }
+      }
+
+      Label {
+        text: root.sendErrorText
+        color: Theme.primaryText
+        font.pixelSize: 12
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
+      }
+    }
+  }
+
   // Message composer
   Rectangle {
     id: messageComposer
@@ -2269,7 +2482,15 @@ Item {
           implicitHeight: 38
           ToolTip.visible: hovered
           ToolTip.text: "Attach file"
-          onClicked: fileDialog.open()
+          onClicked: {
+            if (!root.canSendMessages) {
+              if (typeof window !== "undefined" && window.showRestrictionAlert) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send attachments or media in this chat.")
+              }
+              return
+            }
+            fileDialog.open()
+          }
           icon.source: "qrc:/qt/qml/Silkite/assets/icons/attach.svg"
           icon.width: 20
           icon.height: 20
@@ -2312,6 +2533,7 @@ Item {
           Layout.preferredHeight: Math.max(42, Math.min(140, implicitHeight))
           Layout.maximumHeight: 140
 
+          readOnly: false
           placeholderText: "Write a message..."
           color: Theme.primaryText
           wrapMode: TextEdit.Wrap
@@ -2325,8 +2547,16 @@ Item {
               event.accepted = false
             } else {
               if (text.trim() !== "") {
+                if (!root.canSendMessages) {
+                  if (typeof window !== "undefined" && window.showRestrictionAlert) {
+                    window.showRestrictionAlert("Posting Restricted", "You are not allowed to send messages in this chat.")
+                  }
+                  event.accepted = true
+                  return
+                }
                 var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
                 var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+                root.lastSentText = text.trim()
                 root.sendMessageRequested(text.trim(), replyId, quoteText)
                 root.clearReplyTarget()
                 text = ""
@@ -2381,9 +2611,16 @@ Item {
           implicitWidth: 42
           implicitHeight: 42
           onClicked: {
+            if (!root.canSendMessages) {
+              if (typeof window !== "undefined" && window.showRestrictionAlert) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send messages in this chat.")
+              }
+              return
+            }
             if (messageInput.text.trim() !== "") {
               var replyId = (root.activeReply && root.activeReply.messageId) ? root.activeReply.messageId : 0
               var quoteText = (root.activeReply && root.activeReply.text) ? root.activeReply.text : ""
+              root.lastSentText = messageInput.text.trim()
               root.sendMessageRequested(messageInput.text.trim(), replyId, quoteText)
               root.clearReplyTarget()
               messageInput.text = ""

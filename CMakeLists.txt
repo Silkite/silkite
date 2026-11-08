@@ -65,6 +65,7 @@ qt_add_qml_module(silkite
     src/qml/FolderBar.qml
     src/qml/NewFolderDialog.qml
     src/qml/ManageChatFoldersDialog.qml
+    src/qml/DeleteChatDialog.qml
 
   RESOURCES
     assets/logo-transparent.png
@@ -91,6 +92,7 @@ qt_add_qml_module(silkite
     assets/icons/sticker.svg
     assets/icons/gif.svg
     assets/icons/attach.svg
+    assets/icons/info.svg
     assets/fonts/Fredoka-Variable.ttf
     assets/fonts/Fredoka-OFL.txt
 )

@@ -203,6 +203,17 @@ QVariantMap parseMessage(const td::td_api::message *message, int &fileIdToDownlo
   map["isDownloading"] = false;
   map["text"] = preview(message);
 
+  if (message->sending_state_) {
+    const auto stateId = message->sending_state_->get_id();
+    if (stateId == td::td_api::messageSendingStateFailed::ID) {
+      auto *f = static_cast<const td::td_api::messageSendingStateFailed *>(message->sending_state_.get());
+      map["status"] = QStringLiteral("!");
+      map["sendError"] = f->error_ ? QString::fromStdString(f->error_->message_) : QStringLiteral("Failed to send message");
+    } else if (stateId == td::td_api::messageSendingStatePending::ID) {
+      map["status"] = QStringLiteral("🕒");
+    }
+  }
+
   if (!message->content_) return map;
   const auto contentId = message->content_->get_id();
 
@@ -520,15 +531,32 @@ QVariantMap toChatMap(const td::td_api::chat *chat) {
   QString avatarPath;
   if (chat->photo_ && chat->photo_->small_ && chat->photo_->small_->local_ && chat->photo_->small_->local_->is_downloading_completed_)
     avatarPath = QString::fromStdString(chat->photo_->small_->local_->path_);
+  const bool hasHist = (chat->last_message_ != nullptr);
   qint64 order = 0;
-  for (const auto &position : chat->positions_)
-    if (position && position->list_ && position->list_->get_id() == td::td_api::chatListMain::ID)
-      order = position->order_;
+  const bool isPrivate = chat->type_ && chat->type_->get_id() == td::td_api::chatTypePrivate::ID;
+  if (!isPrivate || hasHist) {
+    for (const auto &position : chat->positions_)
+      if (position && position->list_ && position->list_->get_id() == td::td_api::chatListMain::ID)
+        order = position->order_;
+  }
+  bool canSendMessages = true;
+  if (chat->permissions_) {
+    canSendMessages = chat->permissions_->can_send_basic_messages_;
+  }
+  if (chat->type_ && chat->type_->get_id() == td::td_api::chatTypeSupergroup::ID) {
+    auto *sg = static_cast<const td::td_api::chatTypeSupergroup *>(chat->type_.get());
+    if (sg->is_channel_) {
+      canSendMessages = chat->permissions_ ? chat->permissions_->can_send_basic_messages_ : false;
+    }
+  }
   return {{"chatId", qint64(chat->id_)}, {"name", name}, {"lastMessage", preview(chat->last_message_.get())},
           {"time", chat->last_message_ ? QDateTime::fromSecsSinceEpoch(chat->last_message_->date_).toLocalTime().toString("HH:mm") : QString()},
           {"initials", name.trimmed().isEmpty() ? QStringLiteral("?") : name.trimmed().left(2).toUpper()},
           {"avatarColor", QStringLiteral("#526C8A")}, {"avatarPath", avatarPath},
-          {"unreadCount", chat->unread_count_}, {"order", order}};
+          {"unreadCount", chat->unread_count_}, {"order", order},
+          {"canSendMessages", canSendMessages},
+          {"canBeDeletedOnlyForSelf", chat->can_be_deleted_only_for_self_},
+          {"canBeDeletedForAllUsers", chat->can_be_deleted_for_all_users_}};
 }
 
 qint64 mainChatOrder(const td::td_api::array<td::td_api::object_ptr<td::td_api::chatPosition>> &positions) {
@@ -621,11 +649,19 @@ void TelegramWorker::blockUser(qint64 userId, bool block) {
   enqueue(std::move(cmd));
 }
 
+void TelegramWorker::deleteChat(qint64 chatId) {
+  Command cmd;
+  cmd.type = CommandType::DeleteChat;
+  cmd.chatId = chatId;
+  enqueue(std::move(cmd));
+}
+
 void TelegramWorker::deleteChatHistory(qint64 chatId, bool removeFromChatList, bool revoke) {
   Command cmd;
   cmd.type = CommandType::DeleteChatHistory;
   cmd.chatId = chatId;
   cmd.flag = removeFromChatList;
+  cmd.revoke = revoke;
   enqueue(std::move(cmd));
 }
 
@@ -641,6 +677,7 @@ void TelegramWorker::enqueue(Command command) {
 }
 
 void TelegramWorker::run() {
+  td::ClientManager::execute(td::td_api::make_object<td::td_api::setLogVerbosityLevel>(1));
   td::ClientManager manager;
   const auto qrClientId = manager.create_client_id();
   const auto phoneClientId = manager.create_client_id();
@@ -670,7 +707,12 @@ void TelegramWorker::run() {
   QHash<qint64, qint64> userPrivateChats; // userId -> chatId
   QHash<qint64, bool> chatHasHistory; // chatId -> bool
   QHash<td::ClientManager::RequestId, qint64> pendingPrivateChatRequests; // reqId -> userId
-  QHash<td::ClientManager::RequestId, bool> pendingCreateGroupRequests; // reqId -> true
+  struct PendingGroupCreation {
+    QString title;
+    QList<qint64> userIds;
+    bool isSupergroupFallback = false;
+  };
+  QHash<td::ClientManager::RequestId, PendingGroupCreation> pendingCreateGroupRequests;
   QHash<qint64, qint64> chatUserIds; // chatId -> userId
   QHash<qint64, qint64> chatBasicGroupIds; // chatId -> basicGroupId
   QHash<qint64, qint64> chatSupergroupIds; // chatId -> supergroupId
@@ -680,6 +722,9 @@ void TelegramWorker::run() {
   QHash<td::ClientManager::RequestId, qint64> pendingProfilePhotoRequests; // reqId -> userId
   QHash<td::ClientManager::RequestId, qint64> pendingUserFullInfoRequests; // reqId -> userId
   QHash<td::ClientManager::RequestId, bool> pendingProfileChatRequests; // reqId -> true
+  QHash<td::ClientManager::RequestId, qint64> pendingCanSendMessageRequests; // reqId -> userId
+  qint64 myUserId = 0;
+  td::ClientManager::RequestId myUserIdReqId = 0;
   QHash<int, qint64> profilePhotoFiles; // fileId -> userId
   QHash<qint64, QVariantMap> userFullProfiles; // userId -> full profile map
   QHash<qint64, QVariantList> userPhotoGalleries; // userId -> list of photo objects
@@ -884,12 +929,25 @@ void TelegramWorker::run() {
           send(activeClientId, td::td_api::make_object<td::td_api::importContacts>(std::move(vec)));
         }
         if (command.type == CommandType::CreateGroup) {
+          if (m_isAccountRestricted) {
+            qWarning() << "[TelegramWorker] Blocked CreateGroup because account is restricted";
+            emit groupCreationFailed(m_accountRestrictionError.isEmpty() ? QStringLiteral("USER_RESTRICTED") : m_accountRestrictionError);
+            continue;
+          }
           std::vector<td::td_api::int53> uids;
           for (qint64 uid : command.userIds) {
-            uids.push_back(uid);
+            if (uid > 0) {
+              uids.push_back(uid);
+            }
+          }
+          if (uids.empty()) {
+            qWarning() << "[TelegramWorker] Cannot create group: no valid user IDs provided";
+            emit errorOccurred(QStringLiteral("Please select at least one contact to create a group."));
+            continue;
           }
           const auto reqId = nextRequestId;
-          pendingCreateGroupRequests[reqId] = true;
+          pendingCreateGroupRequests[reqId] = PendingGroupCreation{command.value, command.userIds, false};
+          qDebug() << "[TelegramWorker] Sending createNewBasicGroupChat:" << command.value << "with member count:" << uids.size();
           send(activeClientId, td::td_api::make_object<td::td_api::createNewBasicGroupChat>(std::move(uids), command.value.toStdString(), 0));
         }
         if (command.type == CommandType::CreatePrivateChat) {
@@ -897,6 +955,9 @@ void TelegramWorker::run() {
           const auto reqId = nextRequestId;
           pendingPrivateChatRequests[reqId] = uid;
           send(activeClientId, td::td_api::make_object<td::td_api::createPrivateChat>(uid, false));
+          const auto canSendReqId = nextRequestId;
+          pendingCanSendMessageRequests[canSendReqId] = uid;
+          send(activeClientId, td::td_api::make_object<td::td_api::canSendMessageToUser>(uid, false));
         }
         if (command.type == CommandType::DeleteContact) {
           const qint64 uid = command.chatId;
@@ -943,7 +1004,19 @@ void TelegramWorker::run() {
         }
         if (command.type == CommandType::DeleteChatHistory) {
           const qint64 cid = command.chatId;
-          send(activeClientId, td::td_api::make_object<td::td_api::deleteChatHistory>(cid, command.flag, true));
+          if (command.revoke && chatSupergroupIds.contains(cid)) {
+            send(activeClientId, td::td_api::make_object<td::td_api::deleteChat>(cid));
+          } else {
+            send(activeClientId, td::td_api::make_object<td::td_api::deleteChatHistory>(cid, command.flag, command.revoke));
+            if (!command.revoke && chatSupergroupIds.contains(cid)) {
+              send(activeClientId, td::td_api::make_object<td::td_api::leaveChat>(cid));
+            }
+          }
+          emit chatDeleted(cid);
+        }
+        if (command.type == CommandType::DeleteChat) {
+          const qint64 cid = command.chatId;
+          send(activeClientId, td::td_api::make_object<td::td_api::deleteChat>(cid));
           emit chatDeleted(cid);
         }
         if (command.type == CommandType::LogOut) {
@@ -1020,11 +1093,16 @@ void TelegramWorker::run() {
         emit chatsReset();
         emit contactsReset();
         send(activeClientId, td::td_api::make_object<td::td_api::loadChats>(td::td_api::make_object<td::td_api::chatListMain>(), 30));
+        myUserIdReqId = nextRequestId;
+        send(activeClientId, td::td_api::make_object<td::td_api::getMe>());
       }
 
       if (stateId == td::td_api::authorizationStateLoggingOut::ID ||
           stateId == td::td_api::authorizationStateClosing::ID ||
           stateId == td::td_api::authorizationStateClosed::ID) {
+        m_isAccountRestricted = false;
+        m_accountRestrictionError.clear();
+        emit accountRestrictedChanged(false, {});
         if (currentOpenedChatId != 0) {
           currentOpenedChatId = 0;
         }
@@ -1139,14 +1217,50 @@ void TelegramWorker::run() {
       if (chatUserIds.contains(u->chat_id_)) {
         emit contactChatHistoryChecked(chatUserIds.value(u->chat_id_), u->chat_id_, hasHist);
       }
-      emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"lastMessage", preview(u->last_message_.get())}, {"time", u->last_message_ ? QDateTime::fromSecsSinceEpoch(u->last_message_->date_).toLocalTime().toString("HH:mm") : QString()}, {"order", mainChatOrder(u->positions_)}});
+      qint64 order = mainChatOrder(u->positions_);
+      if (!hasHist) {
+        order = 0;
+      }
+      emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"lastMessage", preview(u->last_message_.get())}, {"time", u->last_message_ ? QDateTime::fromSecsSinceEpoch(u->last_message_->date_).toLocalTime().toString("HH:mm") : QString()}, {"order", order}});
       continue;
     }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatDraftMessage::ID) { auto *u = static_cast<td::td_api::updateChatDraftMessage *>(response.object.get()); const qint64 order = mainChatOrder(u->positions_); if (order > 0) emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"order", order}}); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPosition::ID) { auto *u = static_cast<td::td_api::updateChatPosition *>(response.object.get()); if (u->position_ && u->position_->list_ && u->position_->list_->get_id() == td::td_api::chatListMain::ID) emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"order", qint64(u->position_->order_)}}); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatDraftMessage::ID) {
+      auto *u = static_cast<td::td_api::updateChatDraftMessage *>(response.object.get());
+      const qint64 order = mainChatOrder(u->positions_);
+      if (order > 0 && chatHasHistory.value(u->chat_id_, false))
+        emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"order", order}});
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPosition::ID) {
+      auto *u = static_cast<td::td_api::updateChatPosition *>(response.object.get());
+      if (u->position_ && u->position_->list_ && u->position_->list_->get_id() == td::td_api::chatListMain::ID) {
+        const qint64 cid = qint64(u->chat_id_);
+        const bool hasHist = chatHasHistory.value(cid, false);
+        const qint64 order = hasHist ? qint64(u->position_->order_) : 0;
+        emit chatUpdated({{"chatId", cid}, {"order", order}});
+        if (order == 0) {
+          emit chatDeleted(cid);
+        }
+      }
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatRemovedFromList::ID) {
+      auto *u = static_cast<td::td_api::updateChatRemovedFromList *>(response.object.get());
+      if (u->chat_list_ && u->chat_list_->get_id() == td::td_api::chatListMain::ID) {
+        emit chatDeleted(qint64(u->chat_id_));
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadInbox::ID) { auto *u = static_cast<td::td_api::updateChatReadInbox *>(response.object.get()); emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"unreadCount", u->unread_count_}}); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatReadOutbox::ID) { auto *u = static_cast<td::td_api::updateChatReadOutbox *>(response.object.get()); lastReadOutbox.insert(u->chat_id_, u->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(u->chat_id_), qint64(u->last_read_outbox_message_id_)); continue; }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatAction::ID) { auto *u = static_cast<td::td_api::updateChatAction *>(response.object.get()); emit chatTyping(qint64(u->chat_id_), u->action_ && u->action_->get_id() == td::td_api::chatActionTyping::ID); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatPermissions::ID) {
+      auto *u = static_cast<td::td_api::updateChatPermissions *>(response.object.get());
+      if (u->permissions_) {
+        emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"canSendMessages", u->permissions_->can_send_basic_messages_}});
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateMessageReactions::ID) {
       auto *u = static_cast<td::td_api::updateMessageReactions *>(response.object.get());
       QVariantList list;
@@ -1177,11 +1291,25 @@ void TelegramWorker::run() {
       if (u->message_) {
         const auto chatId = qint64(u->message_->chat_id_);
         const bool read = lastReadOutbox.value(chatId, 0) >= qint64(u->message_->id_);
-        emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}});
+        const bool hasHistory = chatHasHistory.value(chatId, false);
+        if (hasHistory || !u->message_->is_outgoing_) {
+          chatHasHistory[chatId] = true;
+          emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}});
+        }
 
         int fileIdToDownload = 0;
         QVariantMap msgMap = parseMessage(u->message_.get(), fileIdToDownload);
-        msgMap["status"] = u->message_->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+        if (u->message_->sending_state_) {
+          if (u->message_->sending_state_->get_id() == td::td_api::messageSendingStateFailed::ID) {
+            auto *f = static_cast<const td::td_api::messageSendingStateFailed *>(u->message_->sending_state_.get());
+            msgMap["status"] = QStringLiteral("!");
+            msgMap["sendError"] = f->error_ ? QString::fromStdString(f->error_->message_) : QStringLiteral("Failed to send message");
+          } else if (u->message_->sending_state_->get_id() == td::td_api::messageSendingStatePending::ID) {
+            msgMap["status"] = QStringLiteral("🕒");
+          }
+        } else {
+          msgMap["status"] = u->message_->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+        }
 
         if (fileIdToDownload != 0) {
           messageFiles.insert(fileIdToDownload, qMakePair(chatId, qint64(u->message_->id_)));
@@ -1211,7 +1339,49 @@ void TelegramWorker::run() {
           send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileIdToDownload, 32, 0, 0, false));
         }
 
+        chatHasHistory[chatId] = true;
+        if (chatUserIds.contains(chatId)) {
+          emit contactChatHistoryChecked(chatUserIds.value(chatId), chatId, true);
+        }
         emit messageSendSucceeded(chatId, qint64(u->old_message_id_), msgMap);
+        emit chatUpdated({{"chatId", chatId}, {"lastMessage", preview(u->message_.get())}, {"time", QDateTime::fromSecsSinceEpoch(u->message_->date_).toLocalTime().toString("HH:mm")}, {"order", qint64(u->message_->id_)}});
+        send(activeClientId, td::td_api::make_object<td::td_api::addChatToList>(chatId, td::td_api::make_object<td::td_api::chatListMain>()));
+      }
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateMessageSendFailed::ID) {
+      auto *u = static_cast<td::td_api::updateMessageSendFailed *>(response.object.get());
+      if (u->message_) {
+        const auto chatId = qint64(u->message_->chat_id_);
+        const QString errStr = u->error_ ? QString::fromStdString(u->error_->message_) : QStringLiteral("Failed to send message");
+        qWarning() << "Message send failed in chat" << chatId << ":" << errStr;
+
+        const bool isRestricted = errStr.contains(QStringLiteral("USER_RESTRICTED")) ||
+                                  errStr.contains(QStringLiteral("PEER_FLOOD")) ||
+                                  errStr.contains(QStringLiteral("CHAT_WRITE_FORBIDDEN")) ||
+                                  errStr.contains(QStringLiteral("USER_PRIVACY_RESTRICTED"));
+
+        if (errStr.contains(QStringLiteral("USER_RESTRICTED")) || errStr.contains(QStringLiteral("PEER_FLOOD"))) {
+          m_isAccountRestricted = true;
+          m_accountRestrictionError = errStr;
+          emit accountRestrictedChanged(true, errStr);
+        }
+
+        if (isRestricted || !chatHasHistory.value(chatId, false)) {
+          std::vector<td::td_api::int53> ids{u->message_->id_};
+          send(activeClientId, td::td_api::make_object<td::td_api::deleteMessages>(chatId, std::move(ids), true));
+        }
+
+        if (!chatHasHistory.value(chatId, false)) {
+          emit chatUpdated({{"chatId", chatId}, {"lastMessage", QString()}, {"order", 0}});
+        }
+
+        int fileIdToDownload = 0;
+        QVariantMap msgMap = parseMessage(u->message_.get(), fileIdToDownload);
+        msgMap["status"] = QStringLiteral("!");
+        msgMap["sendError"] = errStr;
+
+        emit messageSendFailed(chatId, qint64(u->old_message_id_), msgMap, errStr);
       }
       continue;
     }
@@ -1303,7 +1473,17 @@ void TelegramWorker::run() {
 
         int fileIdToDownload = 0;
         QVariantMap msgMap = parseMessage(m.get(), fileIdToDownload);
-        msgMap["status"] = m->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+        if (m->sending_state_) {
+          if (m->sending_state_->get_id() == td::td_api::messageSendingStateFailed::ID) {
+            auto *f = static_cast<const td::td_api::messageSendingStateFailed *>(m->sending_state_.get());
+            msgMap["status"] = QStringLiteral("!");
+            msgMap["sendError"] = f->error_ ? QString::fromStdString(f->error_->message_) : QStringLiteral("Failed to send message");
+          } else if (m->sending_state_->get_id() == td::td_api::messageSendingStatePending::ID) {
+            msgMap["status"] = QStringLiteral("🕒");
+          }
+        } else {
+          msgMap["status"] = m->is_outgoing_ ? (read ? QStringLiteral("✓✓") : QStringLiteral("✓")) : QString();
+        }
 
         if (fileIdToDownload != 0) {
           messageFiles.insert(fileIdToDownload, qMakePair(chatId, qint64(m->id_)));
@@ -1394,6 +1574,14 @@ void TelegramWorker::run() {
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::user::ID) {
       auto *u = static_cast<td::td_api::user *>(response.object.get());
       const qint64 uid = u->id_;
+      if (response.request_id != 0 && response.request_id == myUserIdReqId) {
+        myUserId = uid;
+      }
+      if (myUserId == uid && u->restriction_info_ && !u->restriction_info_->restriction_reason_.empty()) {
+        m_isAccountRestricted = true;
+        m_accountRestrictionError = QString::fromStdString(u->restriction_info_->restriction_reason_);
+        emit accountRestrictedChanged(true, m_accountRestrictionError);
+      }
       const bool isBot = u->type_ && u->type_->get_id() == td::td_api::userTypeBot::ID;
       users[uid].isBot = isBot;
       if (u->status_) {
@@ -1701,18 +1889,100 @@ void TelegramWorker::run() {
       continue;
     }
 
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::createdBasicGroupChat::ID) {
-      auto *cbg = static_cast<td::td_api::createdBasicGroupChat *>(response.object.get());
-      emit groupChatCreated(qint64(cbg->chat_id_));
-      continue;
+    if (pendingCreateGroupRequests.contains(response.request_id)) {
+      auto pending = pendingCreateGroupRequests.take(response.request_id);
+
+      if (response.object->get_id() == td::td_api::createdBasicGroupChat::ID ||
+          response.object->get_id() == td::td_api::chat::ID) {
+        qint64 cid = 0;
+        if (response.object->get_id() == td::td_api::createdBasicGroupChat::ID) {
+          cid = static_cast<td::td_api::createdBasicGroupChat *>(response.object.get())->chat_id_;
+        } else {
+          cid = static_cast<td::td_api::chat *>(response.object.get())->id_;
+          // Supergroup created: try adding selected members
+          if (!pending.userIds.isEmpty()) {
+            std::vector<td::td_api::int53> memberUids;
+            for (qint64 uid : pending.userIds) {
+              if (uid > 0) memberUids.push_back(uid);
+            }
+            if (!memberUids.empty()) {
+              send(activeClientId, td::td_api::make_object<td::td_api::addChatMembers>(cid, std::move(memberUids)));
+            }
+          }
+        }
+
+        // Add to main chat list so TDLib maintains position
+        send(activeClientId, td::td_api::make_object<td::td_api::addChatToList>(cid, td::td_api::make_object<td::td_api::chatListMain>()));
+
+        // Mark chat open
+        send(activeClientId, td::td_api::make_object<td::td_api::openChat>(cid));
+
+        // Request full chat object from TDLib
+        send(activeClientId, td::td_api::make_object<td::td_api::getChat>(cid));
+
+        const qint64 order = QDateTime::currentMSecsSinceEpoch() * 1000LL;
+        const QString name = pending.title.trimmed().isEmpty() ? QStringLiteral("New Group") : pending.title.trimmed();
+        chatHasHistory[cid] = true;
+        emit chatUpdated({
+            {"chatId", cid},
+            {"name", name},
+            {"initials", name.left(2).toUpper()},
+            {"avatarColor", QStringLiteral("#526C8A")},
+            {"order", order},
+            {"unreadCount", 0},
+            {"lastMessage", QStringLiteral("Group created")},
+            {"statusText", QStringLiteral("Group")}
+        });
+
+        emit groupChatCreated(cid);
+        continue;
+      } else if (response.object->get_id() == td::td_api::error::ID) {
+        auto *err = static_cast<td::td_api::error *>(response.object.get());
+        const QString errStr = QString::fromStdString(err->message_);
+        qWarning() << "[TelegramWorker] Group creation error:" << errStr;
+
+        // If basic group creation failed due to member addition restriction, attempt supergroup fallback
+        if (!pending.isSupergroupFallback && (errStr == QStringLiteral("USER_RESTRICTED") || errStr.contains(QStringLiteral("PRIVACY")))) {
+          qInfo() << "[TelegramWorker] Attempting fallback to createNewSupergroupChat for title:" << pending.title;
+          const auto nextReqId = nextRequestId;
+          pending.isSupergroupFallback = true;
+          pendingCreateGroupRequests[nextReqId] = pending;
+          send(activeClientId, td::td_api::make_object<td::td_api::createNewSupergroupChat>(
+              pending.title.toStdString(), false, false, "", nullptr, 0, false));
+          continue;
+        }
+
+        QString friendlyError;
+        if (errStr == QStringLiteral("USER_RESTRICTED")) {
+          friendlyError = QStringLiteral("Your account is restricted from creating groups. Check @SpamBot on Telegram.");
+        } else if (errStr.contains(QStringLiteral("PRIVACY"))) {
+          friendlyError = QStringLiteral("Restricted by member privacy settings.");
+        } else if (errStr == QStringLiteral("USERS_TOO_FEW")) {
+          friendlyError = QStringLiteral("Select at least one contact to create a group.");
+        } else {
+          friendlyError = QStringLiteral("Failed to create group: %1").arg(errStr);
+        }
+
+        if (errStr == QStringLiteral("USER_RESTRICTED") || errStr == QStringLiteral("PEER_FLOOD")) {
+          m_isAccountRestricted = true;
+          m_accountRestrictionError = errStr;
+          emit accountRestrictedChanged(true, errStr);
+        }
+
+        emit groupCreationFailed(friendlyError);
+        emit errorOccurred(friendlyError);
+        continue;
+      }
     }
 
-    if (pendingCreateGroupRequests.contains(response.request_id)) {
-      pendingCreateGroupRequests.remove(response.request_id);
-      if (response.object->get_id() == td::td_api::createdBasicGroupChat::ID) {
-        auto *cbg = static_cast<td::td_api::createdBasicGroupChat *>(response.object.get());
-        emit groupChatCreated(qint64(cbg->chat_id_));
-      }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::createdBasicGroupChat::ID) {
+      auto *cbg = static_cast<td::td_api::createdBasicGroupChat *>(response.object.get());
+      const qint64 cid = qint64(cbg->chat_id_);
+      chatHasHistory[cid] = true;
+      send(activeClientId, td::td_api::make_object<td::td_api::addChatToList>(cid, td::td_api::make_object<td::td_api::chatListMain>()));
+      send(activeClientId, td::td_api::make_object<td::td_api::openChat>(cid));
+      send(activeClientId, td::td_api::make_object<td::td_api::getChat>(cid));
+      emit groupChatCreated(cid);
       continue;
     }
 
@@ -1725,15 +1995,52 @@ void TelegramWorker::run() {
         chatUserIds[cid] = uid;
         const bool hasHist = (c->last_message_ != nullptr);
         chatHasHistory[cid] = hasHist;
+        inspectChat(c);
+        send(activeClientId, td::td_api::make_object<td::td_api::openChat>(cid));
+        if (hasHist) {
+          emit chatUpdated(toChatMap(c));
+          send(activeClientId, td::td_api::make_object<td::td_api::addChatToList>(cid, td::td_api::make_object<td::td_api::chatListMain>()));
+        } else {
+          auto cMap = toChatMap(c);
+          cMap["order"] = 0;
+          emit chatUpdated(cMap);
+        }
         emit contactChatHistoryChecked(uid, cid, hasHist);
         emit privateChatCreated(uid, cid);
+      } else if (response.object->get_id() == td::td_api::error::ID) {
+        auto *err = static_cast<td::td_api::error *>(response.object.get());
+        const QString errStr = QString::fromStdString(err->message_);
+        if (errStr == QStringLiteral("USER_RESTRICTED") || errStr == QStringLiteral("PEER_FLOOD")) {
+          m_isAccountRestricted = true;
+          m_accountRestrictionError = errStr;
+          emit accountRestrictedChanged(true, errStr);
+        }
+        emit errorOccurred(errStr);
+      }
+      continue;
+    }
+
+    if (pendingCanSendMessageRequests.contains(response.request_id)) {
+      const qint64 uid = pendingCanSendMessageRequests.take(response.request_id);
+      if (response.object->get_id() == td::td_api::canSendMessageToUserResultUserRestrictsNewChats::ID ||
+          response.object->get_id() == td::td_api::canSendMessageToUserResultUserIsDeleted::ID) {
+        const qint64 cid = userPrivateChats.value(uid, 0);
+        if (cid != 0) {
+          emit chatUpdated({{"chatId", cid}, {"canSendMessages", false}});
+        }
       }
       continue;
     }
 
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::error::ID) {
       auto *error = static_cast<td::td_api::error *>(response.object.get());
-      emit errorOccurred(QString::fromStdString(error->message_));
+      const QString errStr = QString::fromStdString(error->message_);
+      if (errStr == QStringLiteral("USER_RESTRICTED") || errStr == QStringLiteral("PEER_FLOOD")) {
+        m_isAccountRestricted = true;
+        m_accountRestrictionError = errStr;
+        emit accountRestrictedChanged(true, errStr);
+      }
+      emit errorOccurred(errStr);
     } else if (response.request_id != 0 && response.object->get_id() == td::td_api::optionValueString::ID) {
       auto *result = static_cast<td::td_api::optionValueString *>(response.object.get());
       if (response.client_id == activeClientId) emit versionReceived(QString::fromStdString(result->value_));

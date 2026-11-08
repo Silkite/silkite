@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import Qt5Compat.GraphicalEffects
 
 ApplicationWindow {
   id: window
@@ -76,7 +77,18 @@ ApplicationWindow {
     chatRevision;
     if (!selectedChatId)
       return ({})
-    return chatListModel.chatById(selectedChatId)
+    var c = chatListModel.chatById(selectedChatId)
+    if (c && c.name)
+      return c
+    var contact = contactListModel.contactByChatId(selectedChatId)
+    if (contact && contact.name)
+      return contact
+    if (contactListPane && contactListPane.selectedUserId) {
+      var cu = contactListModel.contactByUserId(contactListPane.selectedUserId)
+      if (cu && cu.name)
+        return cu
+    }
+    return c || ({})
   }
   property int chatRevision: 0
 
@@ -87,7 +99,13 @@ ApplicationWindow {
     chatRevision;
     if (!secondarySelectedChatId)
       return ({})
-    return chatListModel.chatById(secondarySelectedChatId)
+    var c = chatListModel.chatById(secondarySelectedChatId)
+    if (c && c.name)
+      return c
+    var contact = contactListModel.contactByChatId(secondarySelectedChatId)
+    if (contact && contact.name)
+      return contact
+    return c || ({})
   }
   readonly property bool canEnableSplitPane: width >= (initialDefaultWidth * 0.6)
   property real primaryPaneRatio: 0.5
@@ -188,9 +206,19 @@ ApplicationWindow {
   Connections {
     target: telegramClient
     function onErrorOccurred(error) {
-      window.authError = error
-      if (window.phoneSubmitted)
-        window.clearOtp()
+      if (telegramClient.authorizationState === "ready") {
+        window.showRestrictionAlert("Telegram Error", error)
+      } else {
+        window.authError = error
+        if (window.phoneSubmitted)
+          window.clearOtp()
+      }
+    }
+    function onGroupCreationFailed(error) {
+      window.showRestrictionAlert("Group Creation Failed", error)
+    }
+    function onMessageSendFailed(chatId, error) {
+      window.showRestrictionAlert("Message Failed to Send", error)
     }
     function onAuthenticationCodeTimeoutChanged() {
       window.resendSeconds = telegramClient.authenticationCodeTimeout
@@ -219,7 +247,7 @@ ApplicationWindow {
       }
     }
     function onPrivateChatCreated(userId, chatId) {
-      if (contactListPane.selectedUserId === userId) {
+      if (String(contactListPane.selectedUserId) === String(userId)) {
         window.selectedChatId = chatId
         telegramClient.loadConversation(chatId)
         if (window.compactLayout) {
@@ -235,6 +263,23 @@ ApplicationWindow {
       if (window.compactLayout) {
         window.chatListExpanded = false
         window.chatListAutoExpanded = false
+      }
+    }
+    function onChatDeleted(chatId) {
+      if (String(window.selectedChatId) === String(chatId)) {
+        window.selectedChatId = 0
+        telegramClient.loadConversation(0)
+        if (chatListModel.rowCount() > 0) {
+          var firstChat = chatListModel.chatAt(0)
+          if (firstChat && firstChat.chatId) {
+            window.selectedChatId = firstChat.chatId
+            telegramClient.loadConversation(firstChat.chatId)
+          }
+        }
+      }
+      if (String(window.secondarySelectedChatId) === String(chatId)) {
+        window.secondarySelectedChatId = 0
+        telegramClient.closeSecondaryConversation()
       }
     }
   }
@@ -897,6 +942,301 @@ ApplicationWindow {
     }
   }
 
+  // Telegram Restrictions and Centered Alert Popup
+  property string restrictionAlertTitle: "Action Restricted"
+  property string restrictionAlertMessage: ""
+  property int restrictionCountdown: 10
+
+  function formatTelegramRestrictionError(err) {
+    if (!err) return "An unexpected error occurred."
+    var s = String(err).trim()
+    if (s.indexOf("USER_RESTRICTED") !== -1) {
+      return "Your account is restricted from creating groups or messaging non-contacts. Check @SpamBot on Telegram."
+    }
+    if (s.indexOf("PEER_FLOOD") !== -1) {
+      return "Too many requests. Telegram temporarily limited your account. Try again later or check @SpamBot."
+    }
+    if (s.indexOf("CHAT_WRITE_FORBIDDEN") !== -1 || s.indexOf("SEND_MESSAGES_RESTRICTED") !== -1 || s.indexOf("USER_BANNED_IN_CHANNEL") !== -1) {
+      return "You do not have permission to post in this chat."
+    }
+    if (s.indexOf("USER_PRIVACY_RESTRICTED") !== -1 || s.indexOf("PRIVACY") !== -1 || s.indexOf("canSendMessageToUserResultUserRestrictsNewChats") !== -1) {
+      return "Restricted by the user's privacy settings."
+    }
+    if (s.indexOf("USER_IS_BLOCKED") !== -1 || s.indexOf("YOU_BLOCKED_USER") !== -1) {
+      return "This user is blocked. Unblock them to send messages."
+    }
+    if (s.indexOf("USERS_TOO_FEW") !== -1) {
+      return "Select at least one contact to create a group."
+    }
+    if (s.indexOf("SLOWMODE_WAIT_") !== -1) {
+      var waitMatch = s.match(/SLOWMODE_WAIT_(\d+)/)
+      var secs = waitMatch ? waitMatch[1] : ""
+      return "Slow mode active. Please wait " + (secs ? secs + "s " : "") + "before sending another message."
+    }
+    if (s.indexOf("MESSAGE_TOO_LONG") !== -1) {
+      return "Message exceeds the maximum character limit."
+    }
+    if (s.indexOf("CHATS_TOO_MUCH") !== -1 || s.indexOf("CHANNELS_TOO_MUCH") !== -1) {
+      return "Chat limit reached (maximum 500 chats)."
+    }
+    return s
+  }
+
+  function showRestrictionAlert(title, message) {
+    restrictionAlertTitle = title || "Action Restricted"
+    restrictionAlertMessage = formatTelegramRestrictionError(message)
+    restrictionCountdown = 10
+    restrictionAlertPopup.open()
+  }
+
+  Timer {
+    id: restrictionAutoCloseTimer
+    interval: 1000
+    repeat: true
+    running: restrictionAlertPopup.opened
+    onTriggered: {
+      if (window.restrictionCountdown > 1) {
+        window.restrictionCountdown--
+      } else {
+        window.restrictionCountdown = 0
+        restrictionAutoCloseTimer.stop()
+        restrictionAlertPopup.close()
+      }
+    }
+  }
+
+  Popup {
+    id: restrictionAlertPopup
+    parent: Overlay.overlay
+    x: Math.round((window.width - width) / 2)
+    y: Math.round((window.height - height) / 2)
+    width: Math.min(420, window.width - 32)
+    modal: true
+    focus: true
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    padding: 0
+    topInset: 0
+    leftInset: 0
+    rightInset: 0
+    bottomInset: 0
+
+    onOpened: {
+      window.restrictionCountdown = 10
+      progressAnim.restart()
+    }
+    onClosed: {
+      restrictionAutoCloseTimer.stop()
+      progressAnim.stop()
+    }
+
+    Overlay.modal: Rectangle {
+      color: Qt.rgba(0, 0, 0, 0.5)
+      Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
+    background: Item {
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: -1
+        radius: 18
+        color: Qt.rgba(0, 0, 0, 0.45)
+        z: -1
+      }
+
+      Rectangle {
+        id: restrictionPopupBody
+        anchors.fill: parent
+        radius: 16
+        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.98)
+        border.color: Qt.rgba(235/255, 87/255, 87/255, 0.5)
+        border.width: 1
+      }
+    }
+
+    contentItem: ColumnLayout {
+      id: restrictionPopupCol
+      spacing: 0
+      width: parent.width
+
+      // Header row
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: 16
+        Layout.leftMargin: 18
+        Layout.rightMargin: 16
+        Layout.bottomMargin: 10
+        spacing: 12
+
+        Rectangle {
+          Layout.preferredWidth: 38
+          Layout.preferredHeight: 38
+          radius: 19
+          color: Qt.rgba(235/255, 87/255, 87/255, 0.15)
+          border.color: Qt.rgba(235/255, 87/255, 87/255, 0.35)
+          border.width: 1
+
+          Image {
+            anchors.centerIn: parent
+            source: "qrc:/qt/qml/Silkite/assets/icons/info.svg"
+            width: 20
+            height: 20
+            sourceSize: Qt.size(20, 20)
+            layer.enabled: true
+            layer.effect: ColorOverlay {
+              color: "#EB5757"
+            }
+          }
+        }
+
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 2
+
+          Label {
+            text: window.restrictionAlertTitle
+            color: Theme.primaryText
+            font.pixelSize: 15
+            font.weight: Font.DemiBold
+            Layout.fillWidth: true
+          }
+
+          Label {
+            text: "Telegram Notice"
+            color: "#EB5757"
+            font.pixelSize: 11
+            font.weight: Font.Medium
+          }
+        }
+
+        Item {
+          Layout.preferredWidth: 28
+          Layout.preferredHeight: 28
+
+          Rectangle {
+            anchors.fill: parent
+            radius: 14
+            color: closeRestMouseArea.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
+          }
+
+          Image {
+            anchors.centerIn: parent
+            source: "qrc:/qt/qml/Silkite/assets/icons/close.svg"
+            width: 14
+            height: 14
+            sourceSize: Qt.size(14, 14)
+            layer.enabled: true
+            layer.effect: ColorOverlay {
+              color: closeRestMouseArea.containsMouse ? Theme.primaryText : Theme.secondaryText
+            }
+          }
+
+          MouseArea {
+            id: closeRestMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: restrictionAlertPopup.close()
+          }
+        }
+      }
+
+      // Divider line
+      Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+        color: Theme.divider
+        opacity: 0.5
+      }
+
+      // Message Body
+      Label {
+        Layout.fillWidth: true
+        Layout.margins: 18
+        Layout.topMargin: 14
+        Layout.bottomMargin: 14
+        text: window.restrictionAlertMessage
+        color: Theme.primaryText
+        font.pixelSize: 13
+        wrapMode: Text.WordWrap
+        lineHeight: 1.3
+      }
+
+      // 5-second progress bar
+      Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 2
+        color: Qt.rgba(255, 255, 255, 0.08)
+
+        Rectangle {
+          id: progressBarFill
+          height: parent.height
+          width: parent.width * progressAnim.progress
+          color: "#EB5757"
+          opacity: 0.8
+        }
+      }
+
+      // Footer
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.margins: 14
+        Layout.topMargin: 10
+        spacing: 12
+
+        RowLayout {
+          spacing: 6
+          Layout.fillWidth: true
+
+          Rectangle {
+            Layout.preferredWidth: 8
+            Layout.preferredHeight: 8
+            radius: 4
+            color: "#EB5757"
+          }
+
+          Label {
+            text: "Closing in " + window.restrictionCountdown + "s"
+            color: Theme.secondaryText
+            font.pixelSize: 11
+          }
+        }
+
+        Button {
+          text: "OK"
+          font.pixelSize: 12
+          font.weight: Font.Medium
+          implicitWidth: 80
+          implicitHeight: 32
+          focusPolicy: Qt.NoFocus
+          onClicked: restrictionAlertPopup.close()
+
+          contentItem: Text {
+            text: parent.text
+            font: parent.font
+            color: "#FFFFFF"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+          }
+
+          background: Rectangle {
+            radius: 8
+            color: parent.down ? Qt.darker(Theme.accent, 1.2) : (parent.hovered ? Qt.lighter(Theme.accent, 1.1) : Theme.accent)
+          }
+        }
+      }
+    }
+
+    NumberAnimation {
+      id: progressAnim
+      target: progressAnim
+      property: "progress"
+      from: 1.0
+      to: 0.0
+      duration: 10000
+      property real progress: 1.0
+    }
+  }
+
   Connections {
     target: window
     function onActiveSectionChanged() {
@@ -1300,6 +1640,7 @@ ApplicationWindow {
           }
 
           onContactSelected: function(userId, chatId) {
+            contactListPane.selectedUserId = userId
             if (chatId && chatId !== 0) {
               window.selectedChatId = chatId
               telegramClient.loadConversation(chatId)
@@ -1450,6 +1791,7 @@ ApplicationWindow {
             lastMessage: window.selectedChat.lastMessage || ""
             statusText: window.selectedChat.statusText || ""
             isOnline: window.selectedChat.isOnline || false
+            canSendMessages: window.selectedChat.canSendMessages !== undefined ? window.selectedChat.canSendMessages : true
             messageModel: telegramClient.messageModel
             messages: telegramClient.conversationMessages
             typing: telegramClient.typing
@@ -1467,12 +1809,20 @@ ApplicationWindow {
             }
 
             onSendMessageRequested: function(text, replyToMessageId, quoteText) {
+              if (window.selectedChat && window.selectedChat.canSendMessages === false) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send messages in this chat.")
+                return
+              }
               if (window.selectedChatId) {
                 telegramClient.sendMessage(window.selectedChatId, text, replyToMessageId || 0, quoteText || "")
               }
             }
 
             onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
+              if (window.selectedChat && window.selectedChat.canSendMessages === false) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send media in this chat.")
+                return
+              }
               if (window.selectedChatId) {
                 telegramClient.sendMedia(window.selectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
               }
@@ -1575,6 +1925,7 @@ ApplicationWindow {
             lastMessage: window.secondarySelectedChat.lastMessage || ""
             statusText: window.secondarySelectedChat.statusText || ""
             isOnline: window.secondarySelectedChat.isOnline || false
+            canSendMessages: window.secondarySelectedChat.canSendMessages !== undefined ? window.secondarySelectedChat.canSendMessages : true
             messageModel: telegramClient.secondaryMessageModel
             messages: telegramClient.secondaryConversationMessages
             typing: telegramClient.secondaryTyping
@@ -1586,12 +1937,20 @@ ApplicationWindow {
             }
 
             onSendMessageRequested: function(text, replyToMessageId, quoteText) {
+              if (window.secondarySelectedChat && window.secondarySelectedChat.canSendMessages === false) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send messages in this chat.")
+                return
+              }
               if (window.secondarySelectedChatId) {
                 telegramClient.sendMessage(window.secondarySelectedChatId, text, replyToMessageId || 0, quoteText || "")
               }
             }
 
             onSendMediaRequested: function(filePath, caption, replyToMessageId, quoteText) {
+              if (window.secondarySelectedChat && window.secondarySelectedChat.canSendMessages === false) {
+                window.showRestrictionAlert("Posting Restricted", "You are not allowed to send media in this chat.")
+                return
+              }
               if (window.secondarySelectedChatId) {
                 telegramClient.sendMedia(window.secondarySelectedChatId, filePath, caption, replyToMessageId || 0, quoteText || "")
               }

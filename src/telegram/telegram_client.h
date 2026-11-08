@@ -23,6 +23,8 @@ class TelegramClient final : public QObject {
   Q_PROPERTY(QVariantList secondaryConversationMessages READ secondaryConversationMessages NOTIFY secondaryConversationMessagesChanged)
   Q_PROPERTY(MessageListModel* secondaryMessageModel READ secondaryMessageModel CONSTANT)
   Q_PROPERTY(bool secondaryTyping READ secondaryTyping NOTIFY secondaryTypingChanged)
+  Q_PROPERTY(bool isAccountRestricted READ isAccountRestricted NOTIFY accountRestrictedChanged)
+  Q_PROPERTY(QString accountRestrictionError READ accountRestrictionError NOTIFY accountRestrictedChanged)
 
 public:
   explicit TelegramClient(QObject *parent = nullptr);
@@ -33,6 +35,8 @@ public:
   QString qrCodeImagePath() const;
   int authenticationCodeLength() const;
   int authenticationCodeTimeout() const;
+  bool isAccountRestricted() const { return m_isAccountRestricted; }
+  QString accountRestrictionError() const { return m_accountRestrictionError; }
   Q_INVOKABLE void start();
   Q_INVOKABLE void submitPhoneNumber(const QString &phoneNumber);
   Q_INVOKABLE void submitCode(const QString &code);
@@ -56,7 +60,8 @@ public:
   Q_INVOKABLE void loadContacts();
   Q_INVOKABLE void loadUserProfile(qint64 userId, qint64 chatId = 0);
   Q_INVOKABLE void blockUser(qint64 userId, bool block);
-  Q_INVOKABLE void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = true);
+  Q_INVOKABLE void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = false);
+  Q_INVOKABLE void deleteChat(qint64 chatId);
   Q_INVOKABLE void logOut();
   Q_INVOKABLE void clearSessionData();
 
@@ -95,6 +100,9 @@ signals:
   void contactRemoved(qint64 userId);
   void privateChatCreated(qint64 userId, qint64 chatId);
   void groupChatCreated(qint64 chatId);
+  void groupCreationFailed(const QString &error);
+  void messageSendFailed(qint64 chatId, const QString &error);
+  void accountRestrictedChanged();
   void userProfileLoaded(qint64 userId, const QVariantMap &profile);
   void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
@@ -119,4 +127,6 @@ private:
   bool m_secondaryTyping = false;
 
   QHash<qint64, QString> m_chatTitles;
+  bool m_isAccountRestricted = false;
+  QString m_accountRestrictionError;
 };

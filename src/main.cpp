@@ -39,6 +39,8 @@ int main(int argc, char *argv[]) {
       [](const QString &error) { qWarning() << "TDLib error: " << error; });
   QObject::connect(&telegramClient, &TelegramClient::chatsReset, &chatListModel, &ChatListModel::clearChats);
   QObject::connect(&telegramClient, &TelegramClient::chatUpdated, &chatListModel, &ChatListModel::upsertChat);
+  QObject::connect(&telegramClient, &TelegramClient::chatDeleted, &chatListModel, &ChatListModel::removeChat);
+  QObject::connect(&telegramClient, &TelegramClient::chatDeleted, &chatOrganizationManager, &ChatOrganizationManager::removeChatFromAllFolders);
 
   // Connect contacts signals
   QObject::connect(&telegramClient, &TelegramClient::contactsReset, &contactListModel, &ContactListModel::clearContacts);

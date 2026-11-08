@@ -19,6 +19,7 @@ struct ContactItem {
   QString avatarColor;
   QString avatarPath;
   bool hasChatHistory = false; // true if chat has lastMessage != null/empty
+  bool canSendMessages = true;
 };
 
 class ContactListModel : public QAbstractListModel {
@@ -54,6 +55,7 @@ public:
 
   Q_INVOKABLE QVariantMap contactAt(int row) const;
   Q_INVOKABLE QVariantMap contactByUserId(qint64 userId) const;
+  Q_INVOKABLE QVariantMap contactByChatId(qint64 chatId) const;
 
 public slots:
   void clearContacts();

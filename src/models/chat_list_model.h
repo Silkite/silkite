@@ -18,6 +18,9 @@ struct Chat {
   qint64 order = 0;
   QString statusText;
   bool isOnline = false;
+  bool canSendMessages = true;
+  bool canBeDeletedOnlyForSelf = true;
+  bool canBeDeletedForAllUsers = false;
 };
 
 class ChatListModel : public QAbstractListModel {
@@ -39,7 +42,9 @@ public:
     AvatarPathRole,
     StatusTextRole,
     IsOnlineRole,
-    FolderNamesRole
+    FolderNamesRole,
+    CanBeDeletedOnlyForSelfRole,
+    CanBeDeletedForAllUsersRole
   };
 
   explicit ChatListModel(QObject *parent = nullptr);
@@ -63,6 +68,7 @@ public:
 
 public slots:
   void upsertChat(const QVariantMap &chat);
+  void removeChat(qint64 chatId);
   void clearChats();
 
 signals:

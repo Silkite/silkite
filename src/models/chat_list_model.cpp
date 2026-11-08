@@ -64,6 +64,12 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const {
   case FolderNamesRole:
     return m_orgManager ? m_orgManager->getChatFolderNames(chat.id) : QStringList();
 
+  case CanBeDeletedOnlyForSelfRole:
+    return chat.canBeDeletedOnlyForSelf;
+
+  case CanBeDeletedForAllUsersRole:
+    return chat.canBeDeletedForAllUsers;
+
   default:
     return {};
   }
@@ -83,6 +89,8 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
   roles[StatusTextRole] = "statusText";
   roles[IsOnlineRole] = "isOnline";
   roles[FolderNamesRole] = "folderNames";
+  roles[CanBeDeletedOnlyForSelfRole] = "canBeDeletedOnlyForSelf";
+  roles[CanBeDeletedForAllUsersRole] = "canBeDeletedForAllUsers";
 
   return roles;
 }
@@ -140,6 +148,11 @@ void ChatListModel::updateFilter() {
       continue;
     }
 
+    // Only chats/contacts with an existing conversation stay in the chatbar
+    if (chat.lastMessage.trimmed().isEmpty()) {
+      continue;
+    }
+
     // Folder filter check
     if (m_orgManager && !m_orgManager->isChatInActiveFolder(chat.id)) {
       continue;
@@ -173,7 +186,10 @@ QVariantMap ChatListModel::chatAt(int row) const {
           {"avatarPath", chat.avatarPath},
           {"unreadCount", chat.unreadCount},
           {"statusText", chat.statusText},
-          {"isOnline", chat.isOnline}};
+          {"isOnline", chat.isOnline},
+          {"canSendMessages", chat.canSendMessages},
+          {"canBeDeletedOnlyForSelf", chat.canBeDeletedOnlyForSelf},
+          {"canBeDeletedForAllUsers", chat.canBeDeletedForAllUsers}};
 }
 
 int ChatListModel::indexOfChat(qint64 chatId) const {
@@ -191,7 +207,18 @@ QVariantMap ChatListModel::chatById(qint64 chatId) const {
           {"avatarPath", c.avatarPath},
           {"unreadCount", c.unreadCount},
           {"statusText", c.statusText},
-          {"isOnline", c.isOnline}};
+          {"isOnline", c.isOnline},
+          {"canSendMessages", c.canSendMessages},
+          {"canBeDeletedOnlyForSelf", c.canBeDeletedOnlyForSelf},
+          {"canBeDeletedForAllUsers", c.canBeDeletedForAllUsers}};
+}
+
+void ChatListModel::removeChat(qint64 chatId) {
+  const int i = indexOfChat(chatId);
+  if (i >= 0) {
+    m_chats.removeAt(i);
+    updateFilter();
+  }
 }
 
 void ChatListModel::clearChats() {
@@ -224,9 +251,11 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   if (v.contains("unreadCount")) c.unreadCount = v.value("unreadCount").toInt();
   if (v.contains("statusText")) c.statusText = v.value("statusText").toString();
   if (v.contains("isOnline")) c.isOnline = v.value("isOnline").toBool();
+  if (v.contains("canSendMessages")) c.canSendMessages = v.value("canSendMessages").toBool();
+  if (v.contains("canBeDeletedOnlyForSelf")) c.canBeDeletedOnlyForSelf = v.value("canBeDeletedOnlyForSelf").toBool();
+  if (v.contains("canBeDeletedForAllUsers")) c.canBeDeletedForAllUsers = v.value("canBeDeletedForAllUsers").toBool();
   if (v.contains("order")) {
-    const qint64 order = v.value("order").toLongLong();
-    c.order = order;
+    c.order = v.value("order").toLongLong();
   }
   if (c.initials == "?" && !c.name.trimmed().isEmpty()) c.initials = c.name.trimmed().left(2).toUpper();
   if (i < 0) m_chats.append(c); else m_chats[i] = c;

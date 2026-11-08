@@ -16,6 +16,23 @@ Item {
 
   // Selected contacts for group creation: Set or array of userIds
   property var selectedGroupMemberIds: []
+  property bool isCreatingGroup: false
+  property string groupCreationError: ""
+
+  Connections {
+    target: telegramClient
+    function onGroupChatCreated(chatId) {
+      root.currentMode = "contacts"
+      root.selectedGroupMemberIds = []
+      groupNameInput.clear()
+      root.isCreatingGroup = false
+      root.groupCreationError = ""
+    }
+    function onGroupCreationFailed(error) {
+      root.isCreatingGroup = false
+      root.groupCreationError = error
+    }
+  }
 
   signal contactSelected(var userId, var chatId)
   signal openInSplitRequested(var chatId)
@@ -28,8 +45,15 @@ Item {
   }
 
   function toggleGroupMember(userId) {
+    var uStr = String(userId)
     var arr = selectedGroupMemberIds.slice()
-    var idx = arr.indexOf(userId)
+    var idx = -1
+    for (var i = 0; i < arr.length; i++) {
+      if (String(arr[i]) === uStr) {
+        idx = i
+        break
+      }
+    }
     if (idx >= 0) {
       arr.splice(idx, 1)
     } else {
@@ -39,7 +63,13 @@ Item {
   }
 
   function isMemberSelected(userId) {
-    return selectedGroupMemberIds.indexOf(userId) >= 0
+    var uStr = String(userId)
+    for (var i = 0; i < selectedGroupMemberIds.length; i++) {
+      if (String(selectedGroupMemberIds[i]) === uStr) {
+        return true
+      }
+    }
+    return false
   }
 
   // Outer ambient shadow
@@ -242,6 +272,11 @@ Item {
             leftPadding: 10
             rightPadding: 10
             selectByMouse: true
+            onAccepted: {
+              if (createGroupBtn.enabled) {
+                createGroupBtn.clicked()
+              }
+            }
 
             background: Rectangle {
               radius: 9
@@ -441,6 +476,10 @@ Item {
                   cursorShape: Qt.PointingHandCursor
                   hoverEnabled: true
                   onClicked: {
+                    if (root.currentMode === "newGroup") {
+                      root.toggleGroupMember(contactDelegate.uId)
+                      return
+                    }
                     if (window && typeof window.showContactProfile === "function") {
                       window.showContactProfile({
                         userId: contactDelegate.uId,
@@ -510,7 +549,7 @@ Item {
 
               Timer {
                 id: longPressTimer
-                interval: 320
+                interval: 450
                 repeat: false
                 onTriggered: {
                   if (delegateMouseArea.pressed && (delegateMouseArea.pressedButtons & Qt.LeftButton)) {
@@ -566,7 +605,8 @@ Item {
                   root.dragEnded(gPos)
                   isDragging = false
                   isLongPressed = false
-                } else if (!isLongPressed && mouse.button === Qt.LeftButton) {
+                } else if (mouse.button === Qt.LeftButton) {
+                  isLongPressed = false
                   if (root.currentMode === "newGroup") {
                     root.toggleGroupMember(contactDelegate.uId)
                   } else {
@@ -622,6 +662,33 @@ Item {
         }
       }
 
+      // Group creation error banner
+      Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: errorTextLabel.implicitHeight + 14
+        visible: root.currentMode === "newGroup" && root.groupCreationError !== ""
+        radius: 10
+        color: Qt.rgba(0.9, 0.2, 0.2, 0.18)
+        border.color: Qt.rgba(0.9, 0.2, 0.2, 0.45)
+        border.width: 1
+
+        RowLayout {
+          anchors.fill: parent
+          anchors.leftMargin: 10
+          anchors.rightMargin: 10
+          spacing: 6
+
+          Label {
+            id: errorTextLabel
+            Layout.fillWidth: true
+            text: root.groupCreationError
+            color: "#ff6b6b"
+            font.pixelSize: 11
+            wrapMode: Text.Wrap
+          }
+        }
+      }
+
       // Group Creation Action Bar at the very bottom (visible when in newGroup mode)
       Item {
         id: createGroupBottomBar
@@ -635,11 +702,14 @@ Item {
         }
 
         Button {
+          id: createGroupBtn
           anchors.fill: parent
-          text: root.selectedGroupMemberIds.length > 0
-              ? ("Create Group (" + root.selectedGroupMemberIds.length + ")")
-              : "Select members to create"
-          enabled: groupNameInput.text.trim().length > 0 && root.selectedGroupMemberIds.length > 0
+          text: root.isCreatingGroup
+              ? "Creating group..."
+              : (root.selectedGroupMemberIds.length > 0
+                 ? ("Create Group (" + root.selectedGroupMemberIds.length + ")")
+                 : "Select members to create")
+          enabled: !root.isCreatingGroup && groupNameInput.text.trim().length > 0 && root.selectedGroupMemberIds.length > 0
 
           contentItem: Label {
             text: parent.text
@@ -660,11 +730,17 @@ Item {
 
           onClicked: {
             var title = groupNameInput.text.trim()
-            var members = root.selectedGroupMemberIds
+            var members = []
+            for (var i = 0; i < root.selectedGroupMemberIds.length; i++) {
+              var s = String(root.selectedGroupMemberIds[i])
+              if (s && s !== "0") {
+                members.push(s)
+              }
+            }
+            if (!title || members.length === 0) return
+            root.groupCreationError = ""
+            root.isCreatingGroup = true
             telegramClient.createNewGroup(title, members)
-            root.currentMode = "contacts"
-            root.selectedGroupMemberIds = []
-            groupNameInput.clear()
           }
         }
       }

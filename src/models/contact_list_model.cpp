@@ -123,8 +123,34 @@ QVariantMap ContactListModel::contactByUserId(qint64 userId) const {
     {"initials", item.initials},
     {"avatarColor", item.avatarColor},
     {"avatarPath", item.avatarPath},
-    {"lastSeenSecs", item.lastSeenSecs}
+    {"lastSeenSecs", item.lastSeenSecs},
+    {"canSendMessages", item.canSendMessages}
   };
+}
+
+QVariantMap ContactListModel::contactByChatId(qint64 chatId) const {
+  if (chatId == 0) return {};
+  for (const ContactItem &item : m_contacts) {
+    if (item.chatId == chatId) {
+      return {
+        {"userId", item.userId},
+        {"chatId", item.chatId},
+        {"name", item.fullName},
+        {"fullName", item.fullName},
+        {"firstName", item.firstName},
+        {"lastName", item.lastName},
+        {"phoneNumber", item.phoneNumber},
+        {"statusText", item.statusText},
+        {"isOnline", item.isOnline},
+        {"initials", item.initials},
+        {"avatarColor", item.avatarColor},
+        {"avatarPath", item.avatarPath},
+        {"lastSeenSecs", item.lastSeenSecs},
+        {"canSendMessages", item.canSendMessages}
+      };
+    }
+  }
+  return {};
 }
 
 void ContactListModel::clearContacts() {
@@ -142,6 +168,8 @@ void ContactListModel::upsertContact(const QVariantMap &data) {
   const int idx = findContactIndex(userId);
   if (idx >= 0) {
     ContactItem &item = m_contacts[idx];
+    const bool prevHasHistory = item.hasChatHistory;
+
     if (data.contains("firstName")) item.firstName = data.value("firstName").toString();
     if (data.contains("lastName")) item.lastName = data.value("lastName").toString();
     if (data.contains("fullName")) item.fullName = data.value("fullName").toString();
@@ -154,6 +182,28 @@ void ContactListModel::upsertContact(const QVariantMap &data) {
     if (data.contains("avatarPath")) item.avatarPath = data.value("avatarPath").toString();
     if (data.contains("chatId")) item.chatId = data.value("chatId").toLongLong();
     if (data.contains("hasChatHistory")) item.hasChatHistory = data.value("hasChatHistory").toBool();
+    if (data.contains("canSendMessages")) item.canSendMessages = data.value("canSendMessages").toBool();
+
+    // Check if visibility changed
+    if (!prevHasHistory && item.hasChatHistory) {
+      for (int r = 0; r < m_filteredIndices.size(); ++r) {
+        if (m_filteredIndices[r] == idx) {
+          beginRemoveRows(QModelIndex(), r, r);
+          m_filteredIndices.removeAt(r);
+          endRemoveRows();
+          emit countChanged();
+          return;
+        }
+      }
+    } else {
+      // Data updated for an existing item without changing visibility; emit dataChanged to preserve delegates & gestures
+      for (int r = 0; r < m_filteredIndices.size(); ++r) {
+        if (m_filteredIndices[r] == idx) {
+          emit dataChanged(index(r), index(r));
+          return;
+        }
+      }
+    }
   } else {
     ContactItem item;
     item.userId = userId;
@@ -169,6 +219,7 @@ void ContactListModel::upsertContact(const QVariantMap &data) {
     item.avatarColor = data.value("avatarColor", QStringLiteral("#526C8A")).toString();
     item.avatarPath = data.value("avatarPath").toString();
     item.hasChatHistory = data.value("hasChatHistory", false).toBool();
+    item.canSendMessages = data.value("canSendMessages", true).toBool();
     m_contacts.append(item);
   }
 
@@ -182,7 +233,12 @@ void ContactListModel::updateContactStatus(qint64 userId, const QString &statusT
     m_contacts[idx].statusText = statusText;
     m_contacts[idx].isOnline = isOnline;
     m_contacts[idx].lastSeenSecs = lastSeenSecs;
-    updateFilter();
+    for (int r = 0; r < m_filteredIndices.size(); ++r) {
+      if (m_filteredIndices[r] == idx) {
+        emit dataChanged(index(r), index(r), {StatusTextRole, IsOnlineRole, LastSeenSecsRole});
+        break;
+      }
+    }
   }
 }
 
@@ -202,8 +258,31 @@ void ContactListModel::updateContactAvatar(qint64 userId, const QString &avatarP
 void ContactListModel::setContactHasChatHistory(qint64 userId, qint64 chatId, bool hasHistory) {
   const int idx = findContactIndex(userId);
   if (idx >= 0) {
+    const bool oldHasHistory = m_contacts[idx].hasChatHistory;
     m_contacts[idx].chatId = chatId;
     m_contacts[idx].hasChatHistory = hasHistory;
+
+    // If hasChatHistory changed from false to true, the contact must be removed from the filtered list
+    if (!oldHasHistory && hasHistory) {
+      for (int r = 0; r < m_filteredIndices.size(); ++r) {
+        if (m_filteredIndices[r] == idx) {
+          beginRemoveRows(QModelIndex(), r, r);
+          m_filteredIndices.removeAt(r);
+          endRemoveRows();
+          emit countChanged();
+          return;
+        }
+      }
+    } else if (oldHasHistory == hasHistory) {
+      // Attribute (e.g. chatId) updated without visibility change; avoid resetting model and resetting scroll
+      for (int r = 0; r < m_filteredIndices.size(); ++r) {
+        if (m_filteredIndices[r] == idx) {
+          emit dataChanged(index(r), index(r), {ChatIdRole});
+          return;
+        }
+      }
+    }
+
     updateFilter();
     emit countChanged();
   }

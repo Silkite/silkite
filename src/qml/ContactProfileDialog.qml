@@ -43,6 +43,13 @@ Popup {
   // Photo gallery
   property var photoList: []
 
+  DeleteChatDialog {
+    id: deleteChatDialog
+    onChatDeletionConfirmed: {
+      root.close()
+    }
+  }
+
   function openProfile(data) {
     if (!data) return
     userId = data.userId || 0
@@ -450,8 +457,8 @@ Popup {
                 color: parent.highlighted ? Qt.rgba(255, 82, 82, 0.18) : "transparent"
               }
               onTriggered: {
-                if (typeof telegramClient !== "undefined" && root.chatId !== 0) {
-                  telegramClient.deleteChatHistory(root.chatId, true, true)
+                if (root.chatId !== 0) {
+                  deleteChatDialog.openForChat(root.chatId, root.fullName || root.firstName, true)
                 }
               }
             }

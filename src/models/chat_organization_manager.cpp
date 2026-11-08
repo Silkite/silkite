@@ -220,6 +220,21 @@ void ChatOrganizationManager::removeChatFromFolder(const QString &folderId, qint
   }
 }
 
+void ChatOrganizationManager::removeChatFromAllFolders(qint64 chatId) {
+  if (chatId == 0) return;
+  bool changed = false;
+  for (int i = 0; i < m_folders.size(); ++i) {
+    if (m_folders[i].chatIds.remove(chatId)) {
+      emit dataChanged(index(i, 0), index(i, 0), {ChatCountRole});
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveSettings();
+    emit folderContentsChanged();
+  }
+}
+
 void ChatOrganizationManager::toggleChatInFolder(const QString &folderId, qint64 chatId) {
   if (folderId == "all" || chatId == 0) return;
 

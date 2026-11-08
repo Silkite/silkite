@@ -30,6 +30,10 @@ Item {
     organizationManager: chatOrganizationManager
   }
 
+  DeleteChatDialog {
+    id: deleteChatDialog
+  }
+
   // Outer soft ambient elevation shadow
   Rectangle {
     anchors.fill: glassBody
@@ -147,6 +151,8 @@ Item {
         required property string avatarPath
         required property int unreadCount
         required property var folderNames
+        property bool canBeDeletedOnlyForSelf: true
+        property bool canBeDeletedForAllUsers: false
 
         readonly property bool isSelected: chatDelegate.chatId === root.selectedChatId
 
@@ -446,6 +452,17 @@ Item {
             if (mouse.button === Qt.RightButton) {
               chatContextMenu.targetChatId = chatDelegate.chatId
               chatContextMenu.targetChatName = chatDelegate.name
+              var canDeleteAll = false
+              if (chatDelegate.canBeDeletedForAllUsers !== undefined) {
+                canDeleteAll = !!chatDelegate.canBeDeletedForAllUsers
+              }
+              if (!canDeleteAll && root.chatModel && typeof root.chatModel.chatById === "function") {
+                var cData = root.chatModel.chatById(chatDelegate.chatId)
+                if (cData && cData.canBeDeletedForAllUsers !== undefined) {
+                  canDeleteAll = !!cData.canBeDeletedForAllUsers
+                }
+              }
+              chatContextMenu.canDeleteForAllUsers = Boolean(canDeleteAll)
               chatContextMenu.popup()
             }
           }
@@ -456,6 +473,7 @@ Item {
         id: chatContextMenu
         property var targetChatId: 0
         property string targetChatName: ""
+        property bool canDeleteForAllUsers: false
 
         background: Item {
           implicitWidth: 160
@@ -525,6 +543,44 @@ Item {
             manageFoldersDialog.chatId = chatContextMenu.targetChatId
             manageFoldersDialog.chatName = chatContextMenu.targetChatName
             manageFoldersDialog.open()
+          }
+        }
+
+        MenuSeparator {
+          contentItem: Rectangle {
+            implicitWidth: 140
+            implicitHeight: 1
+            color: Theme.divider
+          }
+        }
+
+        MenuItem {
+          id: deleteChatMenuItem
+          leftPadding: 12
+          rightPadding: 12
+          contentItem: RowLayout {
+            spacing: 8
+            Image {
+              source: "qrc:/qt/qml/Silkite/assets/icons/delete.svg"
+              Layout.preferredWidth: 15
+              Layout.preferredHeight: 15
+              fillMode: Image.PreserveAspectFit
+            }
+            Label {
+              text: "Delete Chat"
+              color: "#FF5252"
+              font.pixelSize: 13
+              font.bold: true
+              verticalAlignment: Text.AlignVCenter
+              Layout.fillWidth: true
+            }
+          }
+          background: Rectangle {
+            color: deleteChatMenuItem.highlighted ? Qt.rgba(255, 82, 82, 0.16) : "transparent"
+            radius: 8
+          }
+          onTriggered: {
+            deleteChatDialog.openForChat(chatContextMenu.targetChatId, chatContextMenu.targetChatName, chatContextMenu.canDeleteForAllUsers)
           }
         }
       }

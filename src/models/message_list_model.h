@@ -29,6 +29,7 @@ public:
     ReplySenderRole,
     ReactionsRole,
     IsSingleEmojiRole,
+    SendErrorRole,
     ModelDataRole // Returns the full QVariantMap for backwards compatibility
   };
   Q_ENUM(MessageRoles)
@@ -45,6 +46,8 @@ public:
   void setMessages(const QVariantList &messages);
   void appendMessage(const QVariantMap &message);
   void replaceMessageId(qint64 oldId, const QVariantMap &message);
+  void setMessageFailed(qint64 oldId, const QVariantMap &message, const QString &errorMessage);
+  void removeMessage(qint64 messageId);
   void updateReadOutbox(qint64 lastReadId);
   void updateMessageFile(qint64 messageId, const QString &filePath);
   void updateMessageReactions(qint64 messageId, const QVariantList &reactions);

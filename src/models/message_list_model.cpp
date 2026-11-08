@@ -54,6 +54,8 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const {
     return msg.value(QStringLiteral("reactions"));
   case IsSingleEmojiRole:
     return msg.value(QStringLiteral("isSingleEmoji"));
+  case SendErrorRole:
+    return msg.value(QStringLiteral("sendError"));
   case ModelDataRole:
     return msg;
   default:
@@ -82,6 +84,7 @@ QHash<int, QByteArray> MessageListModel::roleNames() const {
   roles[ReplySenderRole] = "replySender";
   roles[ReactionsRole] = "reactions";
   roles[IsSingleEmojiRole] = "isSingleEmoji";
+  roles[SendErrorRole] = "sendError";
   roles[ModelDataRole] = "modelData";
   return roles;
 }
@@ -133,6 +136,29 @@ void MessageListModel::replaceMessageId(qint64 oldId, const QVariantMap &message
     emit dataChanged(index(idx), index(idx));
   } else {
     appendMessage(message);
+  }
+}
+
+void MessageListModel::setMessageFailed(qint64 oldId, const QVariantMap &message, const QString &errorMessage) {
+  const int idx = findIndexById(oldId);
+  QVariantMap m = message;
+  m[QStringLiteral("sendError")] = errorMessage;
+  m[QStringLiteral("status")] = QStringLiteral("!");
+  if (idx >= 0) {
+    m_messages[idx] = m;
+    emit dataChanged(index(idx), index(idx));
+  } else {
+    appendMessage(m);
+  }
+}
+
+void MessageListModel::removeMessage(qint64 messageId) {
+  const int idx = findIndexById(messageId);
+  if (idx >= 0) {
+    beginRemoveRows(QModelIndex(), idx, idx);
+    m_messages.removeAt(idx);
+    endRemoveRows();
+    emit countChanged();
   }
 }
 

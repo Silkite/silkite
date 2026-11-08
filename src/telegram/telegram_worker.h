@@ -33,8 +33,11 @@ public:
   void loadContacts();
   void loadUserProfile(qint64 userId, qint64 chatId = 0);
   void blockUser(qint64 userId, bool block);
-  void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = true);
+  void deleteChat(qint64 chatId);
+  void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = false);
   void logOut();
+  bool isAccountRestricted() const { return m_isAccountRestricted; }
+  QString accountRestrictionError() const { return m_accountRestrictionError; }
 
 protected:
   void run() override;
@@ -46,11 +49,13 @@ signals:
   void authenticationCodeTimeoutChanged(int seconds);
   void qrCodeLinkChanged(const QString &link);
   void errorOccurred(const QString &error);
+  void accountRestrictedChanged(bool isRestricted, const QString &reason);
   void chatUpdated(const QVariantMap &chat);
   void chatsReset();
   void messagesLoaded(qint64 chatId, const QVariantList &messages, bool hasMore);
   void messageReceived(qint64 chatId, const QVariantMap &message);
   void messageSendSucceeded(qint64 chatId, qint64 oldMessageId, const QVariantMap &message);
+  void messageSendFailed(qint64 chatId, qint64 oldMessageId, const QVariantMap &message, const QString &error);
   void chatReadOutboxUpdated(qint64 chatId, qint64 lastReadOutboxMessageId);
   void chatTyping(qint64 chatId, bool active);
   void messageFileUpdated(qint64 chatId, qint64 messageId, const QString &filePath);
@@ -65,6 +70,7 @@ signals:
   void contactRemoved(qint64 userId);
   void privateChatCreated(qint64 userId, qint64 chatId);
   void groupChatCreated(qint64 chatId);
+  void groupCreationFailed(const QString &error);
   void userProfileLoaded(qint64 userId, const QVariantMap &profile);
   void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
@@ -92,6 +98,7 @@ private:
     LoadUserProfile,
     BlockUser,
     DeleteChatHistory,
+    DeleteChat,
     LogOut
   };
   struct Command {
@@ -103,8 +110,11 @@ private:
     QString quote;
     QList<qint64> userIds;
     bool flag = false;
+    bool revoke = false;
   };
   void enqueue(Command command);
   QMutex m_mutex;
   QQueue<Command> m_commands;
+  bool m_isAccountRestricted = false;
+  QString m_accountRestrictionError;
 };

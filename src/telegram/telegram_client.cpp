@@ -171,6 +171,60 @@ TelegramClient::TelegramClient(QObject *parent)
     handleSendSucceeded(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
   });
 
+  connect(&m_worker, &TelegramWorker::messageSendFailed, this, [this, resolveReplyInfo](qint64 chatId, qint64 oldId, const QVariantMap &message, const QString &error) {
+    const bool isRestricted = error.contains(QLatin1String("USER_RESTRICTED")) ||
+                              error.contains(QLatin1String("PEER_FLOOD")) ||
+                              error.contains(QLatin1String("CHAT_WRITE_FORBIDDEN")) ||
+                              error.contains(QLatin1String("USER_PRIVACY_RESTRICTED"));
+
+    if (error.contains(QLatin1String("USER_RESTRICTED")) || error.contains(QLatin1String("PEER_FLOOD"))) {
+      if (!m_isAccountRestricted) {
+        m_isAccountRestricted = true;
+        m_accountRestrictionError = error;
+        emit accountRestrictedChanged();
+      }
+    }
+
+    auto handleSendFailed = [this, chatId, oldId, &message, &error, isRestricted, resolveReplyInfo](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+      if (chatId != activeId) return;
+      if (isRestricted) {
+        for (int i = 0; i < targetMessages.size(); ++i) {
+          if (targetMessages[i].toMap().value("messageId").toLongLong() == oldId) {
+            targetMessages.removeAt(i);
+            break;
+          }
+        }
+        targetModel.removeMessage(oldId);
+        emitChanged();
+        return;
+      }
+      QVariantMap msgCopy = message;
+      resolveReplyInfo(msgCopy, activeId, targetMessages);
+      bool found = false;
+      for (int i = 0; i < targetMessages.size(); ++i) {
+        if (targetMessages[i].toMap().value("messageId").toLongLong() == oldId) {
+          const auto oldMap = targetMessages[i].toMap();
+          if (msgCopy.value("replyText").toString().isEmpty() && !oldMap.value("replyText").toString().isEmpty()) {
+            msgCopy["replyText"] = oldMap.value("replyText");
+          }
+          if (msgCopy.value("replySender").toString().isEmpty() && !oldMap.value("replySender").toString().isEmpty()) {
+            msgCopy["replySender"] = oldMap.value("replySender");
+          }
+          targetMessages[i] = msgCopy;
+          found = true;
+          break;
+        }
+      }
+      if (!found) targetMessages.append(msgCopy);
+      targetModel.setMessageFailed(oldId, msgCopy, error);
+      emitChanged();
+    };
+
+    handleSendFailed(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
+    handleSendFailed(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
+    emit messageSendFailed(chatId, error);
+  });
+
   connect(&m_worker, &TelegramWorker::chatReadOutboxUpdated, this, [this](qint64 chatId, qint64 lastReadId) {
     auto handleReadOutbox = [chatId, lastReadId](qint64 activeId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
       if (chatId != activeId) return;
@@ -297,6 +351,14 @@ TelegramClient::TelegramClient(QObject *parent)
   connect(&m_worker, &TelegramWorker::contactRemoved, this, &TelegramClient::contactRemoved);
   connect(&m_worker, &TelegramWorker::privateChatCreated, this, &TelegramClient::privateChatCreated);
   connect(&m_worker, &TelegramWorker::groupChatCreated, this, &TelegramClient::groupChatCreated);
+  connect(&m_worker, &TelegramWorker::groupCreationFailed, this, &TelegramClient::groupCreationFailed);
+  connect(&m_worker, &TelegramWorker::accountRestrictedChanged, this, [this](bool restricted, const QString &reason) {
+    if (m_isAccountRestricted != restricted || m_accountRestrictionError != reason) {
+      m_isAccountRestricted = restricted;
+      m_accountRestrictionError = reason;
+      emit accountRestrictedChanged();
+    }
+  });
   connect(&m_worker, &TelegramWorker::userProfileLoaded, this, &TelegramClient::userProfileLoaded);
   connect(&m_worker, &TelegramWorker::userProfilePhotosLoaded, this, &TelegramClient::userProfilePhotosLoaded);
   connect(&m_worker, &TelegramWorker::userBlockedStatusChanged, this, &TelegramClient::userBlockedStatusChanged);
@@ -400,10 +462,21 @@ void TelegramClient::addContact(const QString &phoneNumber, const QString &first
 }
 
 void TelegramClient::createNewGroup(const QString &title, const QVariantList &userIds) {
+  if (m_isAccountRestricted) {
+    emit groupCreationFailed(m_accountRestrictionError.isEmpty() ? QStringLiteral("USER_RESTRICTED") : m_accountRestrictionError);
+    return;
+  }
   QList<qint64> uids;
   for (const auto &v : userIds) {
-    uids.append(v.toLongLong());
+    qint64 id = v.toLongLong();
+    if (id <= 0) {
+      id = v.toString().toLongLong();
+    }
+    if (id > 0) {
+      uids.append(id);
+    }
   }
+  qDebug() << "[TelegramClient] createNewGroup:" << title << "member count:" << uids.size() << "uids:" << uids;
   m_worker.createNewGroup(title.trimmed(), uids);
 }
 
@@ -431,6 +504,10 @@ void TelegramClient::deleteChatHistory(qint64 chatId, bool removeFromChatList, b
   m_worker.deleteChatHistory(chatId, removeFromChatList, revoke);
 }
 
+void TelegramClient::deleteChat(qint64 chatId) {
+  m_worker.deleteChat(chatId);
+}
+
 void TelegramClient::logOut() {
   m_worker.logOut();
 }
@@ -451,6 +528,10 @@ void TelegramClient::clearSessionData() {
   emit secondaryConversationMessagesChanged();
 
   m_chatTitles.clear();
+
+  m_isAccountRestricted = false;
+  m_accountRestrictionError.clear();
+  emit accountRestrictedChanged();
 
   m_qrCodeLink.clear();
   emit qrCodeLinkChanged();
