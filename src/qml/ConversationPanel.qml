@@ -386,6 +386,26 @@ Item {
               font.bold: true
               font.pixelSize: 14
             }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              hoverEnabled: true
+              onClicked: {
+                if (window && typeof window.showContactProfile === "function") {
+                  window.showContactProfile({
+                    chatId: root.chatId,
+                    name: root.chatName,
+                    fullName: root.chatName,
+                    statusText: root.statusText,
+                    isOnline: root.isOnline,
+                    initials: root.chatInitials,
+                    avatarColor: root.avatarColor,
+                    avatarPath: root.avatarPath
+                  })
+                }
+              }
+            }
           }
 
           ColumnLayout {

@@ -342,6 +342,7 @@ Item {
           readonly property string cInitials: model.initials || "?"
           readonly property string cAvatarColor: model.avatarColor || "#526C8A"
           readonly property string cAvatarPath: model.avatarPath || ""
+          readonly property string cPhoneNumber: model.phoneNumber || ""
           readonly property string cStatusText: model.statusText || ""
           readonly property bool cIsOnline: model.isOnline || false
           readonly property bool isGroupChecked: root.isMemberSelected(uId)
@@ -400,6 +401,7 @@ Item {
                 Layout.preferredWidth: 40
                 Layout.preferredHeight: 40
                 Layout.alignment: Qt.AlignVCenter
+                z: 2
 
                 Rectangle {
                   id: avatarBg
@@ -429,6 +431,29 @@ Item {
                         height: avatarBg.height
                         radius: width / 2
                       }
+                    }
+                  }
+                }
+
+                // Click avatar to view profile popup
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  hoverEnabled: true
+                  onClicked: {
+                    if (window && typeof window.showContactProfile === "function") {
+                      window.showContactProfile({
+                        userId: contactDelegate.uId,
+                        chatId: contactDelegate.cId,
+                        name: contactDelegate.cName,
+                        fullName: contactDelegate.cName,
+                        phoneNumber: contactDelegate.cPhoneNumber,
+                        statusText: contactDelegate.cStatusText,
+                        isOnline: contactDelegate.cIsOnline,
+                        initials: contactDelegate.cInitials,
+                        avatarColor: contactDelegate.cAvatarColor,
+                        avatarPath: contactDelegate.cAvatarPath
+                      })
                     }
                   }
                 }

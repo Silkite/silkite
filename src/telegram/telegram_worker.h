@@ -31,6 +31,10 @@ public:
   void createPrivateChatForUser(qint64 userId);
   void deleteContact(qint64 userId);
   void loadContacts();
+  void loadUserProfile(qint64 userId, qint64 chatId = 0);
+  void blockUser(qint64 userId, bool block);
+  void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = true);
+  void logOut();
 
 protected:
   void run() override;
@@ -61,6 +65,10 @@ signals:
   void contactRemoved(qint64 userId);
   void privateChatCreated(qint64 userId, qint64 chatId);
   void groupChatCreated(qint64 chatId);
+  void userProfileLoaded(qint64 userId, const QVariantMap &profile);
+  void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
+  void userBlockedStatusChanged(qint64 userId, bool isBlocked);
+  void chatDeleted(qint64 chatId);
 
 private:
   enum class CommandType {
@@ -80,7 +88,11 @@ private:
     CreateGroup,
     CreatePrivateChat,
     DeleteContact,
-    LoadContacts
+    LoadContacts,
+    LoadUserProfile,
+    BlockUser,
+    DeleteChatHistory,
+    LogOut
   };
   struct Command {
     CommandType type;
@@ -90,6 +102,7 @@ private:
     QString extra;
     QString quote;
     QList<qint64> userIds;
+    bool flag = false;
   };
   void enqueue(Command command);
   QMutex m_mutex;

@@ -98,3 +98,11 @@ QString AppController::getClipboardFilePath() {
 
   return {};
 }
+
+void AppController::clearClipboardCache() {
+  const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/clipboard";
+  QDir dir(cacheDir);
+  if (dir.exists()) {
+    dir.removeRecursively();
+  }
+}

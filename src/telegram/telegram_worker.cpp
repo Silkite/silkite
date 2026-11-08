@@ -489,12 +489,20 @@ QVariantMap toUserContactMap(const td::td_api::user *u, const QString &statusTex
 
   const QString initials = fullName.left(2).toUpper();
 
+  QString username;
+  if (u->usernames_ && !u->usernames_->active_usernames_.empty()) {
+    username = QString::fromStdString(u->usernames_->active_usernames_[0]);
+  } else if (u->usernames_ && !u->usernames_->editable_username_.empty()) {
+    username = QString::fromStdString(u->usernames_->editable_username_);
+  }
+
   return {
     {"userId", qint64(u->id_)},
     {"firstName", fn},
     {"lastName", ln},
     {"fullName", fullName},
     {"name", fullName},
+    {"username", username},
     {"phoneNumber", QString::fromStdString(u->phone_number_)},
     {"statusText", statusText},
     {"isOnline", isOnline},
@@ -597,6 +605,36 @@ void TelegramWorker::loadContacts() {
   enqueue(std::move(cmd));
 }
 
+void TelegramWorker::loadUserProfile(qint64 userId, qint64 chatId) {
+  Command cmd;
+  cmd.type = CommandType::LoadUserProfile;
+  cmd.chatId = userId;
+  cmd.messageId = chatId; // repurpose messageId field to carry chatId if provided
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::blockUser(qint64 userId, bool block) {
+  Command cmd;
+  cmd.type = CommandType::BlockUser;
+  cmd.chatId = userId;
+  cmd.flag = block;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::deleteChatHistory(qint64 chatId, bool removeFromChatList, bool revoke) {
+  Command cmd;
+  cmd.type = CommandType::DeleteChatHistory;
+  cmd.chatId = chatId;
+  cmd.flag = removeFromChatList;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::logOut() {
+  Command cmd;
+  cmd.type = CommandType::LogOut;
+  enqueue(std::move(cmd));
+}
+
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
   m_commands.enqueue(std::move(command));
@@ -639,6 +677,12 @@ void TelegramWorker::run() {
   QHash<qint64, int> basicGroupMemberCount; // basicGroupId -> member_count
   QHash<qint64, int> supergroupMemberCount; // supergroupId -> member_count
   QHash<qint64, bool> supergroupIsChannel; // supergroupId -> is_channel
+  QHash<td::ClientManager::RequestId, qint64> pendingProfilePhotoRequests; // reqId -> userId
+  QHash<td::ClientManager::RequestId, qint64> pendingUserFullInfoRequests; // reqId -> userId
+  QHash<td::ClientManager::RequestId, bool> pendingProfileChatRequests; // reqId -> true
+  QHash<int, qint64> profilePhotoFiles; // fileId -> userId
+  QHash<qint64, QVariantMap> userFullProfiles; // userId -> full profile map
+  QHash<qint64, QVariantList> userPhotoGalleries; // userId -> list of photo objects
   bool qrPending = true;
   QString phonePending;
   QString phoneState;
@@ -864,6 +908,47 @@ void TelegramWorker::run() {
         if (command.type == CommandType::LoadContacts) {
           send(activeClientId, td::td_api::make_object<td::td_api::getContacts>());
         }
+        if (command.type == CommandType::LoadUserProfile) {
+          qint64 uid = command.chatId;
+          const qint64 cid = command.messageId;
+          if (uid == 0 && cid != 0 && chatUserIds.contains(cid)) {
+            uid = chatUserIds.value(cid);
+          }
+          if (uid != 0) {
+            send(activeClientId, td::td_api::make_object<td::td_api::getUser>(uid));
+            const auto fullReqId = nextRequestId;
+            pendingUserFullInfoRequests[fullReqId] = uid;
+            send(activeClientId, td::td_api::make_object<td::td_api::getUserFullInfo>(uid));
+            const auto photoReqId = nextRequestId;
+            pendingProfilePhotoRequests[photoReqId] = uid;
+            send(activeClientId, td::td_api::make_object<td::td_api::getUserProfilePhotos>(uid, 0, 20));
+          } else if (cid != 0) {
+            const auto chatReqId = nextRequestId;
+            pendingProfileChatRequests[chatReqId] = true;
+            send(activeClientId, td::td_api::make_object<td::td_api::getChat>(cid));
+          }
+        }
+        if (command.type == CommandType::BlockUser) {
+          const qint64 uid = command.chatId;
+          const bool block = command.flag;
+          td::td_api::object_ptr<td::td_api::BlockList> blockList;
+          if (block) {
+            blockList = td::td_api::make_object<td::td_api::blockListMain>();
+          }
+          send(activeClientId, td::td_api::make_object<td::td_api::setMessageSenderBlockList>(
+            td::td_api::make_object<td::td_api::messageSenderUser>(uid),
+            std::move(blockList)
+          ));
+          emit userBlockedStatusChanged(uid, block);
+        }
+        if (command.type == CommandType::DeleteChatHistory) {
+          const qint64 cid = command.chatId;
+          send(activeClientId, td::td_api::make_object<td::td_api::deleteChatHistory>(cid, command.flag, true));
+          emit chatDeleted(cid);
+        }
+        if (command.type == CommandType::LogOut) {
+          send(activeClientId, td::td_api::make_object<td::td_api::logOut>());
+        }
       }
     }
 
@@ -935,6 +1020,39 @@ void TelegramWorker::run() {
         emit chatsReset();
         emit contactsReset();
         send(activeClientId, td::td_api::make_object<td::td_api::loadChats>(td::td_api::make_object<td::td_api::chatListMain>(), 30));
+      }
+
+      if (stateId == td::td_api::authorizationStateLoggingOut::ID ||
+          stateId == td::td_api::authorizationStateClosing::ID ||
+          stateId == td::td_api::authorizationStateClosed::ID) {
+        if (currentOpenedChatId != 0) {
+          currentOpenedChatId = 0;
+        }
+        avatarFileChats.clear();
+        messageFiles.clear();
+        lastReadOutbox.clear();
+        historyRequests.clear();
+        users.clear();
+        avatarFileUsers.clear();
+        contactUserIds.clear();
+        userPrivateChats.clear();
+        chatHasHistory.clear();
+        pendingPrivateChatRequests.clear();
+        pendingCreateGroupRequests.clear();
+        chatUserIds.clear();
+        chatBasicGroupIds.clear();
+        chatSupergroupIds.clear();
+        basicGroupMemberCount.clear();
+        supergroupMemberCount.clear();
+        supergroupIsChannel.clear();
+        phonePending.clear();
+
+        // Wipe cached login QR and any temporary session images
+        const auto qrDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/auth";
+        QDir(qrDir).removeRecursively();
+
+        emit chatsReset();
+        emit contactsReset();
       }
 
       if (isQrClient && stateId == td::td_api::authorizationStateWaitOtherDeviceConfirmation::ID) {
@@ -1098,7 +1216,32 @@ void TelegramWorker::run() {
       continue;
     }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) { auto *r = static_cast<td::td_api::chats *>(response.object.get()); for (const auto id : r->chat_ids_) send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id)); continue; }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) { auto *chat = static_cast<td::td_api::chat *>(response.object.get()); lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_); emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_)); if (chat->photo_ && chat->photo_->small_) { const int fileId = chat->photo_->small_->id_; avatarFileChats.insert(fileId, chat->id_); send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false)); } inspectChat(chat); emit chatUpdated(toChatMap(chat)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) {
+      auto *chat = static_cast<td::td_api::chat *>(response.object.get());
+      lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_);
+      emit chatReadOutboxUpdated(qint64(chat->id_), qint64(chat->last_read_outbox_message_id_));
+      if (chat->photo_ && chat->photo_->small_) {
+        const int fileId = chat->photo_->small_->id_;
+        avatarFileChats.insert(fileId, chat->id_);
+        send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false));
+      }
+      inspectChat(chat);
+      emit chatUpdated(toChatMap(chat));
+
+      if (pendingProfileChatRequests.remove(response.request_id)) {
+        if (chatUserIds.contains(chat->id_)) {
+          const qint64 uid = chatUserIds.value(chat->id_);
+          send(activeClientId, td::td_api::make_object<td::td_api::getUser>(uid));
+          const auto fullReqId = nextRequestId;
+          pendingUserFullInfoRequests[fullReqId] = uid;
+          send(activeClientId, td::td_api::make_object<td::td_api::getUserFullInfo>(uid));
+          const auto photoReqId = nextRequestId;
+          pendingProfilePhotoRequests[photoReqId] = uid;
+          send(activeClientId, td::td_api::make_object<td::td_api::getUserProfilePhotos>(uid, 0, 20));
+        }
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateFile::ID) {
       auto *u = static_cast<td::td_api::updateFile *>(response.object.get());
       if (u->file_ && u->file_->local_ && u->file_->local_->is_downloading_completed_) {
@@ -1111,6 +1254,26 @@ void TelegramWorker::run() {
           const qint64 uid = avatarFileUsers.value(fid);
           users[uid].avatarPath = localPath;
           emit contactAvatarUpdated(uid, localPath);
+        }
+        if (profilePhotoFiles.contains(fid)) {
+          const qint64 uid = profilePhotoFiles.value(fid);
+          if (userPhotoGalleries.contains(uid)) {
+            QVariantList photos = userPhotoGalleries.value(uid);
+            bool updated = false;
+            for (int i = 0; i < photos.size(); ++i) {
+              QVariantMap pMap = photos[i].toMap();
+              if (pMap.value("fileId").toInt() == fid) {
+                pMap["filePath"] = localPath;
+                photos[i] = pMap;
+                updated = true;
+                break;
+              }
+            }
+            if (updated) {
+              userPhotoGalleries[uid] = photos;
+              emit userProfilePhotosLoaded(uid, photos);
+            }
+          }
         }
         if (messageFiles.contains(fid)) {
           const auto pairs = messageFiles.values(fid);
@@ -1191,10 +1354,38 @@ void TelegramWorker::run() {
             cmap["chatId"] = cid;
             cmap["hasChatHistory"] = chatHasHistory.value(cid, false);
           }
+          userFullProfiles[uid]["userId"] = uid;
+          userFullProfiles[uid]["firstName"] = cmap.value("firstName");
+          userFullProfiles[uid]["lastName"] = cmap.value("lastName");
+          userFullProfiles[uid]["fullName"] = cmap.value("fullName");
+          userFullProfiles[uid]["username"] = cmap.value("username");
+          userFullProfiles[uid]["phoneNumber"] = cmap.value("phoneNumber");
+          userFullProfiles[uid]["statusText"] = cmap.value("statusText");
+          userFullProfiles[uid]["isOnline"] = cmap.value("isOnline");
+          userFullProfiles[uid]["avatarPath"] = cmap.value("avatarPath");
+          userFullProfiles[uid]["initials"] = cmap.value("initials");
+          userFullProfiles[uid]["avatarColor"] = cmap.value("avatarColor");
+          userFullProfiles[uid]["isContact"] = u->user_->is_contact_;
+          emit userProfileLoaded(uid, userFullProfiles[uid]);
           emit contactUpdated(cmap);
         } else if (contactUserIds.contains(uid)) {
           contactUserIds.remove(uid);
           emit contactRemoved(uid);
+        } else {
+          auto cmap = toUserContactMap(u->user_.get(), users[uid].statusText, users[uid].isOnline, users[uid].lastSeenSecs, users[uid].avatarPath);
+          userFullProfiles[uid]["userId"] = uid;
+          userFullProfiles[uid]["firstName"] = cmap.value("firstName");
+          userFullProfiles[uid]["lastName"] = cmap.value("lastName");
+          userFullProfiles[uid]["fullName"] = cmap.value("fullName");
+          userFullProfiles[uid]["username"] = cmap.value("username");
+          userFullProfiles[uid]["phoneNumber"] = cmap.value("phoneNumber");
+          userFullProfiles[uid]["statusText"] = cmap.value("statusText");
+          userFullProfiles[uid]["isOnline"] = cmap.value("isOnline");
+          userFullProfiles[uid]["avatarPath"] = cmap.value("avatarPath");
+          userFullProfiles[uid]["initials"] = cmap.value("initials");
+          userFullProfiles[uid]["avatarColor"] = cmap.value("avatarColor");
+          userFullProfiles[uid]["isContact"] = u->user_->is_contact_;
+          emit userProfileLoaded(uid, userFullProfiles[uid]);
         }
       }
       continue;
@@ -1225,14 +1416,29 @@ void TelegramWorker::run() {
           emit chatUpdated({{"chatId", it.key()}, {"statusText", users[uid].statusText}, {"isOnline", users[uid].isOnline}});
         }
       }
+
+      auto cmap = toUserContactMap(u, users[uid].statusText, users[uid].isOnline, users[uid].lastSeenSecs, users[uid].avatarPath);
+      if (userPrivateChats.contains(uid)) {
+        const qint64 cid = userPrivateChats.value(uid);
+        cmap["chatId"] = cid;
+        cmap["hasChatHistory"] = chatHasHistory.value(cid, false);
+      }
+      userFullProfiles[uid]["userId"] = uid;
+      userFullProfiles[uid]["firstName"] = cmap.value("firstName");
+      userFullProfiles[uid]["lastName"] = cmap.value("lastName");
+      userFullProfiles[uid]["fullName"] = cmap.value("fullName");
+      userFullProfiles[uid]["username"] = cmap.value("username");
+      userFullProfiles[uid]["phoneNumber"] = cmap.value("phoneNumber");
+      userFullProfiles[uid]["statusText"] = cmap.value("statusText");
+      userFullProfiles[uid]["isOnline"] = cmap.value("isOnline");
+      userFullProfiles[uid]["avatarPath"] = cmap.value("avatarPath");
+      userFullProfiles[uid]["initials"] = cmap.value("initials");
+      userFullProfiles[uid]["avatarColor"] = cmap.value("avatarColor");
+      userFullProfiles[uid]["isContact"] = u->is_contact_;
+      emit userProfileLoaded(uid, userFullProfiles[uid]);
+
       if (u->is_contact_) {
         contactUserIds.insert(uid);
-        auto cmap = toUserContactMap(u, users[uid].statusText, users[uid].isOnline, users[uid].lastSeenSecs, users[uid].avatarPath);
-        if (userPrivateChats.contains(uid)) {
-          const qint64 cid = userPrivateChats.value(uid);
-          cmap["chatId"] = cid;
-          cmap["hasChatHistory"] = chatHasHistory.value(cid, false);
-        }
         emit contactUpdated(cmap);
       }
       continue;
@@ -1359,6 +1565,120 @@ void TelegramWorker::run() {
             }
           }
         }
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateUserFullInfo::ID) {
+      auto *u = static_cast<td::td_api::updateUserFullInfo *>(response.object.get());
+      const qint64 uid = u->user_id_;
+      if (u->user_full_info_) {
+        auto *info = u->user_full_info_.get();
+        QString bio;
+        if (info->bio_) bio = QString::fromStdString(info->bio_->text_);
+
+        QString birthdateStr;
+        if (info->birthdate_) {
+          const int d = info->birthdate_->day_;
+          const int m = info->birthdate_->month_;
+          const int y = info->birthdate_->year_;
+          if (y > 0) birthdateStr = QStringLiteral("%1/%2/%3").arg(d, 2, 10, QChar('0')).arg(m, 2, 10, QChar('0')).arg(y);
+          else birthdateStr = QStringLiteral("%1/%2").arg(d, 2, 10, QChar('0')).arg(m, 2, 10, QChar('0'));
+        }
+
+        QString note;
+        if (info->note_) note = QString::fromStdString(info->note_->text_);
+
+        const bool isBlocked = (info->block_list_ != nullptr);
+        const int groupsInCommon = info->group_in_common_count_;
+
+        userFullProfiles[uid]["userId"] = uid;
+        userFullProfiles[uid]["bio"] = bio;
+        userFullProfiles[uid]["birthdate"] = birthdateStr;
+        userFullProfiles[uid]["note"] = note;
+        userFullProfiles[uid]["isBlocked"] = isBlocked;
+        userFullProfiles[uid]["groupsInCommon"] = groupsInCommon;
+        userFullProfiles[uid]["canBeCalled"] = info->can_be_called_;
+        userFullProfiles[uid]["supportsVideoCalls"] = info->supports_video_calls_;
+
+        emit userProfileLoaded(uid, userFullProfiles[uid]);
+        emit userBlockedStatusChanged(uid, isBlocked);
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::userFullInfo::ID) {
+      auto *info = static_cast<td::td_api::userFullInfo *>(response.object.get());
+      const qint64 uid = pendingUserFullInfoRequests.take(response.request_id);
+      if (uid != 0 && info) {
+        QString bio;
+        if (info->bio_) bio = QString::fromStdString(info->bio_->text_);
+
+        QString birthdateStr;
+        if (info->birthdate_) {
+          const int d = info->birthdate_->day_;
+          const int m = info->birthdate_->month_;
+          const int y = info->birthdate_->year_;
+          if (y > 0) birthdateStr = QStringLiteral("%1/%2/%3").arg(d, 2, 10, QChar('0')).arg(m, 2, 10, QChar('0')).arg(y);
+          else birthdateStr = QStringLiteral("%1/%2").arg(d, 2, 10, QChar('0')).arg(m, 2, 10, QChar('0'));
+        }
+
+        QString note;
+        if (info->note_) note = QString::fromStdString(info->note_->text_);
+
+        const bool isBlocked = (info->block_list_ != nullptr);
+        const int groupsInCommon = info->group_in_common_count_;
+
+        userFullProfiles[uid]["userId"] = uid;
+        userFullProfiles[uid]["bio"] = bio;
+        userFullProfiles[uid]["birthdate"] = birthdateStr;
+        userFullProfiles[uid]["note"] = note;
+        userFullProfiles[uid]["isBlocked"] = isBlocked;
+        userFullProfiles[uid]["groupsInCommon"] = groupsInCommon;
+        userFullProfiles[uid]["canBeCalled"] = info->can_be_called_;
+        userFullProfiles[uid]["supportsVideoCalls"] = info->supports_video_calls_;
+
+        emit userProfileLoaded(uid, userFullProfiles[uid]);
+        emit userBlockedStatusChanged(uid, isBlocked);
+      }
+      continue;
+    }
+
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chatPhotos::ID) {
+      auto *photosObj = static_cast<td::td_api::chatPhotos *>(response.object.get());
+      const qint64 uid = pendingProfilePhotoRequests.take(response.request_id);
+      if (uid != 0 && photosObj) {
+        QVariantList photoList;
+        for (const auto &p : photosObj->photos_) {
+          if (!p) continue;
+          QVariantMap pMap;
+          pMap["id"] = qint64(p->id_);
+          pMap["addedDate"] = p->added_date_;
+          int bigFileId = 0;
+          QString localPath;
+          if (!p->sizes_.empty()) {
+            auto &biggest = p->sizes_.back();
+            if (biggest && biggest->photo_) {
+              bigFileId = biggest->photo_->id_;
+              pMap["width"] = biggest->width_;
+              pMap["height"] = biggest->height_;
+              if (biggest->photo_->local_ && biggest->photo_->local_->is_downloading_completed_) {
+                localPath = QString::fromStdString(biggest->photo_->local_->path_);
+              }
+            }
+          }
+          pMap["fileId"] = bigFileId;
+          pMap["filePath"] = localPath;
+          if (bigFileId != 0) {
+            profilePhotoFiles[bigFileId] = uid;
+            if (localPath.isEmpty()) {
+              send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(bigFileId, 16, 0, 0, false));
+            }
+          }
+          photoList.append(pMap);
+        }
+        userPhotoGalleries[uid] = photoList;
+        emit userProfilePhotosLoaded(uid, photoList);
       }
       continue;
     }

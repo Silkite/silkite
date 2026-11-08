@@ -60,6 +60,7 @@ qt_add_qml_module(silkite
     src/qml/ChatList.qml
     src/qml/ContactList.qml
     src/qml/NewContactDialog.qml
+    src/qml/ContactProfileDialog.qml
     src/qml/ConversationPanel.qml
     src/qml/FolderBar.qml
     src/qml/NewFolderDialog.qml
@@ -78,6 +79,9 @@ qt_add_qml_module(silkite
     assets/icons/settings.svg
     assets/icons/search.svg
     assets/icons/more.svg
+    assets/icons/menu.svg
+    assets/icons/block.svg
+    assets/icons/delete.svg
     assets/icons/panel-left.svg
     assets/icons/split-pane.svg
     assets/icons/close.svg

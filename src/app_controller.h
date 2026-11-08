@@ -28,6 +28,7 @@ public:
   Q_INVOKABLE bool clipboardHasImage() const;
   Q_INVOKABLE bool clipboardHasFiles() const;
   Q_INVOKABLE QString getClipboardFilePath();
+  Q_INVOKABLE void clearClipboardCache();
 
 signals:
   void lastMessageChanged();

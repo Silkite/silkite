@@ -225,6 +225,26 @@ Item {
                 font.bold: true
                 font.pixelSize: 15
               }
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                hoverEnabled: true
+                onClicked: {
+                  if (window && typeof window.showContactProfile === "function") {
+                    window.showContactProfile({
+                      chatId: chatDelegate.chatId,
+                      name: chatDelegate.name,
+                      fullName: chatDelegate.name,
+                      statusText: chatDelegate.statusText,
+                      isOnline: chatDelegate.isOnline,
+                      initials: chatDelegate.initials,
+                      avatarColor: chatDelegate.avatarColor,
+                      avatarPath: chatDelegate.avatarPath
+                    })
+                  }
+                }
+              }
             }
 
             // Compact unread indicator badge on avatar

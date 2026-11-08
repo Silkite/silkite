@@ -236,6 +236,16 @@ void ChatOrganizationManager::toggleChatInFolder(const QString &folderId, qint64
   }
 }
 
+void ChatOrganizationManager::resetFolders() {
+  QSettings settings;
+  settings.remove("chatFolders");
+  m_activeFolderId = "all";
+  emit activeFolderIdChanged(m_activeFolderId);
+  emit activeFolderChanged();
+  loadSettings();
+  emit folderContentsChanged();
+}
+
 void ChatOrganizationManager::saveSettings() {
   QSettings settings;
   QJsonArray array;

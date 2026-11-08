@@ -12,6 +12,11 @@ TelegramClient::TelegramClient(QObject *parent)
           &TelegramClient::versionReceived);
   connect(&m_worker, &TelegramWorker::authorizationStateChanged, this,
           [this](const QString &state) {
+            if (state == QLatin1String("loggingOut") ||
+                state == QLatin1String("closing") ||
+                state == QLatin1String("closed")) {
+              clearSessionData();
+            }
             if (m_authorizationState != state) {
               m_authorizationState = state;
               emit authorizationStateChanged();
@@ -292,6 +297,10 @@ TelegramClient::TelegramClient(QObject *parent)
   connect(&m_worker, &TelegramWorker::contactRemoved, this, &TelegramClient::contactRemoved);
   connect(&m_worker, &TelegramWorker::privateChatCreated, this, &TelegramClient::privateChatCreated);
   connect(&m_worker, &TelegramWorker::groupChatCreated, this, &TelegramClient::groupChatCreated);
+  connect(&m_worker, &TelegramWorker::userProfileLoaded, this, &TelegramClient::userProfileLoaded);
+  connect(&m_worker, &TelegramWorker::userProfilePhotosLoaded, this, &TelegramClient::userProfilePhotosLoaded);
+  connect(&m_worker, &TelegramWorker::userBlockedStatusChanged, this, &TelegramClient::userBlockedStatusChanged);
+  connect(&m_worker, &TelegramWorker::chatDeleted, this, &TelegramClient::chatDeleted);
 
   connect(&m_worker, &TelegramWorker::authenticationCodeLengthChanged, this,
           [this](int length) {
@@ -409,6 +418,46 @@ void TelegramClient::deleteContact(qint64 userId) {
 void TelegramClient::loadContacts() {
   m_worker.loadContacts();
 }
+
+void TelegramClient::loadUserProfile(qint64 userId, qint64 chatId) {
+  m_worker.loadUserProfile(userId, chatId);
+}
+
+void TelegramClient::blockUser(qint64 userId, bool block) {
+  m_worker.blockUser(userId, block);
+}
+
+void TelegramClient::deleteChatHistory(qint64 chatId, bool removeFromChatList, bool revoke) {
+  m_worker.deleteChatHistory(chatId, removeFromChatList, revoke);
+}
+
+void TelegramClient::logOut() {
+  m_worker.logOut();
+}
+
+void TelegramClient::clearSessionData() {
+  m_activeChatId = 0;
+  m_typing = false;
+  emit typingChanged();
+  m_conversationMessages.clear();
+  m_messageModel.clear();
+  emit conversationMessagesChanged();
+
+  m_secondaryActiveChatId = 0;
+  m_secondaryTyping = false;
+  emit secondaryTypingChanged();
+  m_secondaryConversationMessages.clear();
+  m_secondaryMessageModel.clear();
+  emit secondaryConversationMessagesChanged();
+
+  m_chatTitles.clear();
+
+  m_qrCodeLink.clear();
+  emit qrCodeLinkChanged();
+  m_qrCodeImagePath.clear();
+  emit qrCodeImagePathChanged();
+}
+
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }
 QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }

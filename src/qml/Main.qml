@@ -196,6 +196,28 @@ ApplicationWindow {
       window.resendSeconds = telegramClient.authenticationCodeTimeout
       window.resendReady = true
     }
+    function onAuthorizationStateChanged() {
+      const s = telegramClient.authorizationState
+      if (s === "loggingOut" || s === "closing" || s === "closed") {
+        window.selectedChatId = 0
+        window.secondarySelectedChatId = 0
+        window.phoneSubmitted = false
+        window.phoneLoginStarted = false
+        window.resendSeconds = 0
+        window.resendReady = false
+        window.authError = ""
+        window.clearOtp()
+        if (contactListPane)
+          contactListPane.selectedUserId = 0
+        if (chatOrganizationManager)
+          chatOrganizationManager.resetFolders()
+        if (appController)
+          appController.clearClipboardCache()
+        if (settingsPopup && settingsPopup.opened)
+          settingsPopup.close()
+        window.activeSection = "chats"
+      }
+    }
     function onPrivateChatCreated(userId, chatId) {
       if (contactListPane.selectedUserId === userId) {
         window.selectedChatId = chatId
@@ -233,7 +255,7 @@ ApplicationWindow {
 
   readonly property bool isLoginRequired: {
     const s = telegramClient.authorizationState
-    return s === "waitPhoneNumber" || s === "waitCode" || s === "waitOtherDeviceConfirmation" || s === "waitPassword"
+    return s !== "ready"
   }
 
   Rectangle {
@@ -834,6 +856,44 @@ ApplicationWindow {
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
       }
+
+      Rectangle {
+        Layout.fillWidth: true
+        height: 1
+        color: Theme.divider
+      }
+
+      Button {
+        Layout.alignment: Qt.AlignHCenter
+        Layout.preferredHeight: 36
+        Layout.preferredWidth: 140
+        background: Rectangle {
+          radius: 10
+          color: parent.down ? Qt.darker("#dc3545", 1.1) : (parent.hovered ? "#e04b59" : "#dc3545")
+        }
+        contentItem: Text {
+          text: "Log Out"
+          color: "white"
+          font.bold: true
+          font.pixelSize: 13
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
+        }
+        onClicked: {
+          settingsPopup.close()
+          telegramClient.logOut()
+        }
+      }
+    }
+  }
+
+  ContactProfileDialog {
+    id: contactProfileDialog
+  }
+
+  function showContactProfile(profileData) {
+    if (contactProfileDialog) {
+      contactProfileDialog.openProfile(profileData)
     }
   }
 

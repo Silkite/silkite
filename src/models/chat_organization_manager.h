@@ -50,6 +50,7 @@ public:
   Q_INVOKABLE void moveChatToFolder(const QString &folderId, qint64 chatId);
   Q_INVOKABLE void removeChatFromFolder(const QString &folderId, qint64 chatId);
   Q_INVOKABLE void toggleChatInFolder(const QString &folderId, qint64 chatId);
+  Q_INVOKABLE void resetFolders();
 
 public slots:
   void setActiveFolderId(const QString &id);

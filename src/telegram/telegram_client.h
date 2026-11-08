@@ -54,6 +54,11 @@ public:
   Q_INVOKABLE void createPrivateChatForUser(qint64 userId);
   Q_INVOKABLE void deleteContact(qint64 userId);
   Q_INVOKABLE void loadContacts();
+  Q_INVOKABLE void loadUserProfile(qint64 userId, qint64 chatId = 0);
+  Q_INVOKABLE void blockUser(qint64 userId, bool block);
+  Q_INVOKABLE void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = true);
+  Q_INVOKABLE void logOut();
+  Q_INVOKABLE void clearSessionData();
 
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
@@ -90,6 +95,10 @@ signals:
   void contactRemoved(qint64 userId);
   void privateChatCreated(qint64 userId, qint64 chatId);
   void groupChatCreated(qint64 chatId);
+  void userProfileLoaded(qint64 userId, const QVariantMap &profile);
+  void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
+  void userBlockedStatusChanged(qint64 userId, bool isBlocked);
+  void chatDeleted(qint64 chatId);
 
 private:
   TelegramWorker m_worker;
