@@ -1590,6 +1590,10 @@ ApplicationWindow {
             window.openInSecondaryPane(chatId)
           }
 
+          onGlobalSearchRequested: {
+            globalSearchBar.open()
+          }
+
           onDragStarted: function(chatData, startPos) {
             if (!window.canEnableSplitPane) return
             // Auto-open split pane if not open so user has a drop area!
@@ -2306,6 +2310,23 @@ ApplicationWindow {
             elide: Text.ElideRight
             Layout.fillWidth: true
           }
+        }
+      }
+    }
+
+    GlobalSearchBar {
+      id: globalSearchBar
+
+      onOpenChatRequested: function(chatId, userId) {
+        if (chatId && chatId !== 0) {
+          window.selectedChatId = chatId
+          telegramClient.loadConversation(chatId)
+          if (window.compactLayout) {
+            window.chatListExpanded = false
+            window.chatListAutoExpanded = false
+          }
+        } else if (userId && userId !== 0) {
+          telegramClient.createPrivateChatForUser(userId)
         }
       }
     }

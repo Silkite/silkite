@@ -16,6 +16,7 @@ Item {
 
   signal chatSelected(var chatId)
   signal openInSplitRequested(var chatId)
+  signal globalSearchRequested()
   signal dragStarted(var chatData, point startPos)
   signal dragMoved(point globalPos)
   signal dragEnded(point globalPos)
@@ -78,14 +79,45 @@ Item {
     anchors.bottomMargin: 14
     spacing: root.compactMode ? 8 : 12
 
-    Label {
-      id: chatsHeaderLabel
-      visible: true
-      text: "Chats"
-      font.pixelSize: 22
-      font.bold: true
-      color: Theme.primaryText
-      Layout.alignment: Qt.AlignLeft
+    RowLayout {
+      Layout.fillWidth: true
+      Layout.preferredHeight: 32
+      spacing: 6
+
+      Label {
+        id: chatsHeaderLabel
+        text: "Chats"
+        font.pixelSize: 22
+        font.bold: true
+        color: Theme.primaryText
+        Layout.alignment: Qt.AlignVCenter
+        Layout.fillWidth: true
+      }
+
+      ToolButton {
+        id: searchButton
+        visible: !root.compactMode
+        icon.source: "qrc:/qt/qml/Silkite/assets/icons/search.svg"
+        icon.width: 18
+        icon.height: 18
+        icon.color: hovered ? Theme.accent : Theme.secondaryText
+        focusPolicy: Qt.NoFocus
+        padding: 0
+        implicitWidth: 30
+        implicitHeight: 30
+        ToolTip.visible: hovered
+        ToolTip.text: "Global Search"
+        ToolTip.delay: 350
+
+        background: Rectangle {
+          radius: 8
+          color: parent.hovered ? Theme.controlBackground : "transparent"
+          border.color: parent.hovered ? Theme.divider : "transparent"
+          border.width: 1
+        }
+
+        onClicked: root.globalSearchRequested()
+      }
     }
 
     // Chat Organization: Folder bar with "New Folder" & Folder pills
@@ -98,34 +130,6 @@ Item {
 
       onCreateFolderRequested: {
         newFolderDialog.open()
-      }
-    }
-
-    TextField {
-      id: searchField
-      visible: !root.compactMode
-      Layout.fillWidth: true
-      Layout.preferredHeight: 38
-      placeholderText: "Search chats..."
-      color: Theme.primaryText
-      selectByMouse: true
-
-      onTextChanged: root.chatModel.filterText = text
-
-      background: Rectangle {
-        radius: 12
-        color: Theme.controlBackground
-        border.color: searchField.activeFocus ? Theme.accent : Theme.divider
-        border.width: 1
-
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: 1
-          radius: 11
-          color: "transparent"
-          border.color: Qt.rgba(1, 1, 1, searchField.activeFocus ? 0.25 : 0.08)
-          border.width: 1
-        }
       }
     }
 

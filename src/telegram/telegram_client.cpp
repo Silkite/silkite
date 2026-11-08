@@ -363,6 +363,8 @@ TelegramClient::TelegramClient(QObject *parent)
   connect(&m_worker, &TelegramWorker::userProfilePhotosLoaded, this, &TelegramClient::userProfilePhotosLoaded);
   connect(&m_worker, &TelegramWorker::userBlockedStatusChanged, this, &TelegramClient::userBlockedStatusChanged);
   connect(&m_worker, &TelegramWorker::chatDeleted, this, &TelegramClient::chatDeleted);
+  connect(&m_worker, &TelegramWorker::localSearchResults, this, &TelegramClient::localSearchResults);
+  connect(&m_worker, &TelegramWorker::globalSearchResults, this, &TelegramClient::globalSearchResults);
 
   connect(&m_worker, &TelegramWorker::authenticationCodeLengthChanged, this,
           [this](int length) {
@@ -541,5 +543,17 @@ void TelegramClient::clearSessionData() {
 
 QVariantList TelegramClient::conversationMessages() const { return m_conversationMessages; }
 bool TelegramClient::typing() const { return m_typing; }
+
+void TelegramClient::searchLocal(const QString &query) {
+  m_worker.searchLocal(query);
+}
+
+void TelegramClient::searchGlobal(const QString &query) {
+  m_worker.searchGlobal(query);
+}
+
+void TelegramClient::addRecentlyFoundChat(qint64 chatId) {
+  m_worker.addRecentlyFoundChat(chatId);
+}
 QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }
 bool TelegramClient::secondaryTyping() const { return m_secondaryTyping; }

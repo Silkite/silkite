@@ -549,6 +549,24 @@ QVariantMap toChatMap(const td::td_api::chat *chat) {
       canSendMessages = chat->permissions_ ? chat->permissions_->can_send_basic_messages_ : false;
     }
   }
+  QString chatTypeStr = QStringLiteral("group");
+  qint64 targetUserId = 0;
+  if (chat->type_) {
+    const auto tid = chat->type_->get_id();
+    if (tid == td::td_api::chatTypePrivate::ID) {
+      chatTypeStr = QStringLiteral("user");
+      targetUserId = static_cast<const td::td_api::chatTypePrivate *>(chat->type_.get())->user_id_;
+    } else if (tid == td::td_api::chatTypeSecret::ID) {
+      chatTypeStr = QStringLiteral("user");
+      targetUserId = static_cast<const td::td_api::chatTypeSecret *>(chat->type_.get())->user_id_;
+    } else if (tid == td::td_api::chatTypeSupergroup::ID) {
+      auto *sg = static_cast<const td::td_api::chatTypeSupergroup *>(chat->type_.get());
+      chatTypeStr = sg->is_channel_ ? QStringLiteral("channel") : QStringLiteral("group");
+    } else if (tid == td::td_api::chatTypeBasicGroup::ID) {
+      chatTypeStr = QStringLiteral("group");
+    }
+  }
+
   return {{"chatId", qint64(chat->id_)}, {"name", name}, {"lastMessage", preview(chat->last_message_.get())},
           {"time", chat->last_message_ ? QDateTime::fromSecsSinceEpoch(chat->last_message_->date_).toLocalTime().toString("HH:mm") : QString()},
           {"initials", name.trimmed().isEmpty() ? QStringLiteral("?") : name.trimmed().left(2).toUpper()},
@@ -556,7 +574,9 @@ QVariantMap toChatMap(const td::td_api::chat *chat) {
           {"unreadCount", chat->unread_count_}, {"order", order},
           {"canSendMessages", canSendMessages},
           {"canBeDeletedOnlyForSelf", chat->can_be_deleted_only_for_self_},
-          {"canBeDeletedForAllUsers", chat->can_be_deleted_for_all_users_}};
+          {"canBeDeletedForAllUsers", chat->can_be_deleted_for_all_users_},
+          {"type", chatTypeStr},
+          {"userId", targetUserId}};
 }
 
 qint64 mainChatOrder(const td::td_api::array<td::td_api::object_ptr<td::td_api::chatPosition>> &positions) {
@@ -671,6 +691,27 @@ void TelegramWorker::logOut() {
   enqueue(std::move(cmd));
 }
 
+void TelegramWorker::searchLocal(const QString &query) {
+  Command cmd;
+  cmd.type = CommandType::SearchLocal;
+  cmd.value = query;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::searchGlobal(const QString &query) {
+  Command cmd;
+  cmd.type = CommandType::SearchGlobal;
+  cmd.value = query;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::addRecentlyFoundChat(qint64 chatId) {
+  Command cmd;
+  cmd.type = CommandType::AddRecentlyFoundChat;
+  cmd.chatId = chatId;
+  enqueue(std::move(cmd));
+}
+
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
   m_commands.enqueue(std::move(command));
@@ -723,6 +764,10 @@ void TelegramWorker::run() {
   QHash<td::ClientManager::RequestId, qint64> pendingUserFullInfoRequests; // reqId -> userId
   QHash<td::ClientManager::RequestId, bool> pendingProfileChatRequests; // reqId -> true
   QHash<td::ClientManager::RequestId, qint64> pendingCanSendMessageRequests; // reqId -> userId
+  QHash<td::ClientManager::RequestId, QString> pendingLocalSearchRequests; // reqId -> query
+  QHash<td::ClientManager::RequestId, QString> pendingGlobalSearchRequests; // reqId -> query
+  QHash<td::ClientManager::RequestId, QString> pendingPublicChatRequests; // reqId -> query
+  QHash<qint64, QVariantMap> cachedChats; // chatId -> chat map
   qint64 myUserId = 0;
   td::ClientManager::RequestId myUserIdReqId = 0;
   QHash<int, qint64> profilePhotoFiles; // fileId -> userId
@@ -1021,6 +1066,32 @@ void TelegramWorker::run() {
         }
         if (command.type == CommandType::LogOut) {
           send(activeClientId, td::td_api::make_object<td::td_api::logOut>());
+        }
+        if (command.type == CommandType::SearchLocal) {
+          const QString query = command.value.trimmed();
+          const auto reqId = nextRequestId;
+          pendingLocalSearchRequests[reqId] = query;
+          send(activeClientId, td::td_api::make_object<td::td_api::searchChats>(query.toStdString(), nullptr, 30));
+        }
+        if (command.type == CommandType::SearchGlobal) {
+          const QString rawQuery = command.value.trimmed();
+          QString cleanQuery = rawQuery;
+          if (cleanQuery.startsWith(QLatin1Char('@'))) {
+            cleanQuery = cleanQuery.mid(1).trimmed();
+          }
+          if (rawQuery.startsWith(QLatin1Char('@')) && !cleanQuery.isEmpty()) {
+            const auto singleReqId = nextRequestId;
+            pendingPublicChatRequests[singleReqId] = rawQuery;
+            send(activeClientId, td::td_api::make_object<td::td_api::searchPublicChat>(cleanQuery.toStdString()));
+          }
+          const auto reqId = nextRequestId;
+          pendingGlobalSearchRequests[reqId] = rawQuery;
+          send(activeClientId, td::td_api::make_object<td::td_api::searchPublicChats>(cleanQuery.toStdString(), nullptr));
+        }
+        if (command.type == CommandType::AddRecentlyFoundChat) {
+          if (command.chatId != 0) {
+            send(activeClientId, td::td_api::make_object<td::td_api::addRecentlyFoundChat>(command.chatId));
+          }
         }
       }
     }
@@ -1385,7 +1456,28 @@ void TelegramWorker::run() {
       }
       continue;
     }
-    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) { auto *r = static_cast<td::td_api::chats *>(response.object.get()); for (const auto id : r->chat_ids_) send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id)); continue; }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chats::ID) {
+      auto *r = static_cast<td::td_api::chats *>(response.object.get());
+      const bool isLocalSearch = pendingLocalSearchRequests.contains(response.request_id);
+      const bool isGlobalSearch = pendingGlobalSearchRequests.contains(response.request_id);
+      const QString searchQuery = isLocalSearch ? pendingLocalSearchRequests.take(response.request_id)
+                                : (isGlobalSearch ? pendingGlobalSearchRequests.take(response.request_id) : QString());
+
+      QVariantList foundList;
+      for (const auto id : r->chat_ids_) {
+        send(activeClientId, td::td_api::make_object<td::td_api::getChat>(id));
+        if (cachedChats.contains(id)) {
+          foundList.append(cachedChats.value(id));
+        }
+      }
+
+      if (isLocalSearch) {
+        emit localSearchResults(searchQuery, foundList);
+      } else if (isGlobalSearch) {
+        emit globalSearchResults(searchQuery, foundList);
+      }
+      continue;
+    }
     if (response.client_id == activeClientId && response.object->get_id() == td::td_api::chat::ID) {
       auto *chat = static_cast<td::td_api::chat *>(response.object.get());
       lastReadOutbox.insert(chat->id_, chat->last_read_outbox_message_id_);
@@ -1396,7 +1488,14 @@ void TelegramWorker::run() {
         send(activeClientId, td::td_api::make_object<td::td_api::downloadFile>(fileId, 1, 0, 0, false));
       }
       inspectChat(chat);
-      emit chatUpdated(toChatMap(chat));
+      auto cMap = toChatMap(chat);
+      cachedChats.insert(chat->id_, cMap);
+      emit chatUpdated(cMap);
+
+      if (pendingPublicChatRequests.contains(response.request_id)) {
+        const QString q = pendingPublicChatRequests.take(response.request_id);
+        emit globalSearchResults(q, QVariantList{cMap});
+      }
 
       if (pendingProfileChatRequests.remove(response.request_id)) {
         if (chatUserIds.contains(chat->id_)) {

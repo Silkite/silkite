@@ -137,7 +137,7 @@ Item {
     }
   }
 
-  property bool hasConversation: chatName !== ""
+  property bool hasConversation: (chatId !== 0 && chatId !== undefined && chatId !== null) || chatName !== ""
   property string appVersion: ""
   property color glassColor: Qt.rgba(1, 1, 1, 0.08)
   property color glassBorder: Qt.rgba(1, 1, 1, 0.16)
@@ -336,6 +336,7 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     height: root.hasConversation ? 56 : 0
+    visible: root.hasConversation
     clip: false
 
     RowLayout {
@@ -667,6 +668,7 @@ Item {
     clip: true
     anchors.fill: chatMessagesBox
     anchors.margins: 4
+    visible: root.hasConversation
 
       ListView {
         id: messageListView
@@ -2256,6 +2258,7 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     height: root.hasConversation ? (composerCol.implicitHeight + 20) : 0
+    visible: root.hasConversation
     clip: false
 
     color: "transparent"

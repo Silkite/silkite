@@ -65,6 +65,11 @@ public:
   Q_INVOKABLE void logOut();
   Q_INVOKABLE void clearSessionData();
 
+  // Global search methods
+  Q_INVOKABLE void searchLocal(const QString &query);
+  Q_INVOKABLE void searchGlobal(const QString &query);
+  Q_INVOKABLE void addRecentlyFoundChat(qint64 chatId);
+
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;
@@ -107,6 +112,10 @@ signals:
   void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
   void chatDeleted(qint64 chatId);
+
+  // Search signals
+  void localSearchResults(const QString &query, const QVariantList &results);
+  void globalSearchResults(const QString &query, const QVariantList &results);
 
 private:
   TelegramWorker m_worker;

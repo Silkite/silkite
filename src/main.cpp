@@ -7,6 +7,7 @@
 #include "models/chat_list_model.h"
 #include "models/chat_organization_manager.h"
 #include "models/contact_list_model.h"
+#include "models/global_search_model.h"
 #include "theme/theme_manager.h"
 #include "telegram/telegram_client.h"
 
@@ -26,6 +27,7 @@ int main(int argc, char *argv[]) {
   chatListModel.setOrganizationManager(&chatOrganizationManager);
 
   ContactListModel contactListModel;
+  GlobalSearchModel globalSearchModel;
 
   TelegramClient telegramClient;
 
@@ -50,6 +52,10 @@ int main(int argc, char *argv[]) {
   QObject::connect(&telegramClient, &TelegramClient::contactChatHistoryChecked, &contactListModel, &ContactListModel::setContactHasChatHistory);
   QObject::connect(&telegramClient, &TelegramClient::contactRemoved, &contactListModel, &ContactListModel::removeContact);
 
+  // Connect global search signals
+  QObject::connect(&telegramClient, &TelegramClient::localSearchResults, &globalSearchModel, &GlobalSearchModel::setLocalResults);
+  QObject::connect(&telegramClient, &TelegramClient::globalSearchResults, &globalSearchModel, &GlobalSearchModel::setGlobalResults);
+
   QQmlApplicationEngine engine;
 
   engine.rootContext()->setContextProperty("appController", &appController);
@@ -57,6 +63,7 @@ int main(int argc, char *argv[]) {
   engine.rootContext()->setContextProperty("chatOrganizationManager", &chatOrganizationManager);
   engine.rootContext()->setContextProperty("chatListModel", &chatListModel);
   engine.rootContext()->setContextProperty("contactListModel", &contactListModel);
+  engine.rootContext()->setContextProperty("globalSearchModel", &globalSearchModel);
   engine.rootContext()->setContextProperty("telegramClient", &telegramClient);
 
   QObject::connect(

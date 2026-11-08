@@ -36,6 +36,12 @@ public:
   void deleteChat(qint64 chatId);
   void deleteChatHistory(qint64 chatId, bool removeFromChatList = true, bool revoke = false);
   void logOut();
+
+  // Global search methods
+  void searchLocal(const QString &query);
+  void searchGlobal(const QString &query);
+  void addRecentlyFoundChat(qint64 chatId);
+
   bool isAccountRestricted() const { return m_isAccountRestricted; }
   QString accountRestrictionError() const { return m_accountRestrictionError; }
 
@@ -76,6 +82,10 @@ signals:
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
   void chatDeleted(qint64 chatId);
 
+  // Search signals
+  void localSearchResults(const QString &query, const QVariantList &results);
+  void globalSearchResults(const QString &query, const QVariantList &results);
+
 private:
   enum class CommandType {
     PhoneNumber,
@@ -99,7 +109,10 @@ private:
     BlockUser,
     DeleteChatHistory,
     DeleteChat,
-    LogOut
+    LogOut,
+    SearchLocal,
+    SearchGlobal,
+    AddRecentlyFoundChat
   };
   struct Command {
     CommandType type;
