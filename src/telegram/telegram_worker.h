@@ -42,6 +42,11 @@ public:
   void searchGlobal(const QString &query);
   void addRecentlyFoundChat(qint64 chatId);
 
+  // Group / Channel management
+  void joinChat(qint64 chatId);
+  void leaveChat(qint64 chatId);
+  void toggleChatMute(qint64 chatId, bool mute);
+
   bool isAccountRestricted() const { return m_isAccountRestricted; }
   QString accountRestrictionError() const { return m_accountRestrictionError; }
 
@@ -112,7 +117,10 @@ private:
     LogOut,
     SearchLocal,
     SearchGlobal,
-    AddRecentlyFoundChat
+    AddRecentlyFoundChat,
+    JoinChat,
+    LeaveChat,
+    ToggleChatMute
   };
   struct Command {
     CommandType type;

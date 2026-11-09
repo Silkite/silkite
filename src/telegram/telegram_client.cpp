@@ -35,7 +35,7 @@ TelegramClient::TelegramClient(QObject *parent)
   });
   connect(&m_worker, &TelegramWorker::chatsReset, this, &TelegramClient::chatsReset);
   connect(&m_worker, &TelegramWorker::messagesLoaded, this, [this](qint64 chatId, const QVariantList &messages, bool hasMore) {
-    auto updateMessagesForChat = [this, chatId, &messages](qint64 targetChatId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
+    auto updateMessagesForChat = [this, chatId, &messages, hasMore](qint64 targetChatId, QVariantList &targetMessages, MessageListModel &targetModel, auto emitChanged) {
       if (chatId != targetChatId) return;
 
       QMap<qint64, QVariantMap> map;
@@ -85,7 +85,7 @@ TelegramClient::TelegramClient(QObject *parent)
       targetModel.setMessages(merged);
       emitChanged();
 
-      if (targetMessages.size() < 30 && !targetMessages.isEmpty()) {
+      if (hasMore && targetMessages.size() < 30 && !targetMessages.isEmpty()) {
         const qint64 oldestId = targetMessages.first().toMap().value("messageId").toLongLong();
         if (oldestId > 0) {
           m_worker.loadConversation(chatId, oldestId, 50);
@@ -554,6 +554,18 @@ void TelegramClient::searchGlobal(const QString &query) {
 
 void TelegramClient::addRecentlyFoundChat(qint64 chatId) {
   m_worker.addRecentlyFoundChat(chatId);
+}
+
+void TelegramClient::joinChat(qint64 chatId) {
+  m_worker.joinChat(chatId);
+}
+
+void TelegramClient::leaveChat(qint64 chatId) {
+  m_worker.leaveChat(chatId);
+}
+
+void TelegramClient::toggleChatMute(qint64 chatId, bool mute) {
+  m_worker.toggleChatMute(chatId, mute);
 }
 QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }
 bool TelegramClient::secondaryTyping() const { return m_secondaryTyping; }

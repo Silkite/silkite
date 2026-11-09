@@ -70,6 +70,11 @@ public:
   Q_INVOKABLE void searchGlobal(const QString &query);
   Q_INVOKABLE void addRecentlyFoundChat(qint64 chatId);
 
+  // Group / Channel actions
+  Q_INVOKABLE void joinChat(qint64 chatId);
+  Q_INVOKABLE void leaveChat(qint64 chatId);
+  Q_INVOKABLE void toggleChatMute(qint64 chatId, bool mute);
+
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
   bool typing() const;

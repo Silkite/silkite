@@ -21,6 +21,9 @@ struct Chat {
   bool canSendMessages = true;
   bool canBeDeletedOnlyForSelf = true;
   bool canBeDeletedForAllUsers = false;
+  QString type = QStringLiteral("group");
+  bool isMember = true;
+  bool isMuted = false;
 };
 
 class ChatListModel : public QAbstractListModel {
@@ -44,7 +47,10 @@ public:
     IsOnlineRole,
     FolderNamesRole,
     CanBeDeletedOnlyForSelfRole,
-    CanBeDeletedForAllUsersRole
+    CanBeDeletedForAllUsersRole,
+    TypeRole,
+    IsMemberRole,
+    IsMutedRole
   };
 
   explicit ChatListModel(QObject *parent = nullptr);

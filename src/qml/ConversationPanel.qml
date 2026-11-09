@@ -21,10 +21,16 @@ Item {
   property bool typing: false
   property bool isSecondaryPane: false
   property bool canSendMessages: true
+  property string chatType: "group"
+  property bool isMember: true
+  property bool isMuted: false
   property string lastSentText: ""
 
   signal closePaneRequested()
   signal toggleSplitRequested()
+  signal joinChatRequested(var chatId)
+  signal leaveChatRequested(var chatId)
+  signal toggleMuteRequested(var chatId, bool mute)
 
   // Pill notification button tracking unread/new messages arriving while scrolled up
   property int unreadIncomingCount: 0
@@ -51,19 +57,7 @@ Item {
   function scheduleBottomScroll(animated) {
     if (messageListView.count === 0) return
     lastKnownAtBottom = true
-    messageScrollAnim.stop()
     messageListView.positionViewAtEnd()
-    // Run across multiple event loops to ensure initial delegate layouts are finished
-    Qt.callLater(function() {
-      if (messageListView.count > 0 && lastKnownAtBottom) {
-        messageListView.positionViewAtEnd()
-        Qt.callLater(function() {
-          if (messageListView.count > 0 && lastKnownAtBottom) {
-            messageListView.positionViewAtEnd()
-          }
-        })
-      }
-    })
   }
 
   onChatIdChanged: {
@@ -74,7 +68,6 @@ Item {
       pendingScrollToBottom = false
       bottomScrollScheduled = false
       lastKnownAtBottom = true
-      messageScrollAnim.stop()
       scheduleBottomScroll(false)
     }
   }
@@ -111,17 +104,20 @@ Item {
   Connections {
     target: root.messageModel
     function onMessagesLoaded() {
-      // When history is loaded or reloaded for a conversation, ensure we position at the bottom
-      lastKnownAtBottom = true
-      unreadIncomingCount = 0
-      root.scheduleBottomScroll(false)
+      // Only snap to the bottom if we were previously empty or the user is already at the bottom
+      if (root.previousMessageCount === 0 || root.lastKnownAtBottom) {
+        root.lastKnownAtBottom = true
+        root.unreadIncomingCount = 0
+        root.scheduleBottomScroll(false)
+      }
+      root.previousMessageCount = root.messageModel ? root.messageModel.count : 0
     }
     function onMessageAdded(message) {
       root.handleNewMessage(message)
     }
     function onCountChanged() {
       // Handled primarily via messageAdded, but keep count sync
-      previousMessageCount = root.messageModel ? root.messageModel.count : 0
+      root.previousMessageCount = root.messageModel ? root.messageModel.count : 0
     }
   }
 
@@ -301,6 +297,8 @@ Item {
     z: -1
     visible: root.hasConversation
   }
+
+  readonly property bool showComposer: root.hasConversation && root.canSendMessages && root.isMember
 
   // Liquid glass background container ONLY for the chat messages section
   Rectangle {
@@ -510,8 +508,95 @@ Item {
           anchors.centerIn: parent
           spacing: 6
 
-          // Voice call button
+          // Join button for non-members of public channels or groups
+          Button {
+            visible: (root.chatType === "channel" || root.chatType === "group") && !root.isMember
+            text: "Join"
+            focusPolicy: Qt.NoFocus
+            implicitHeight: 34
+            implicitWidth: 68
+            contentItem: Text {
+              text: parent.text
+              font.pixelSize: 13
+              font.weight: Font.DemiBold
+              color: Theme.accentText
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle {
+              radius: 10
+              color: parent.hovered ? Qt.lighter(Theme.accent, 1.1) : Theme.accent
+              border.color: Qt.rgba(1, 1, 1, 0.25)
+              border.width: 1
+            }
+            onClicked: root.joinChatRequested(root.chatId)
+          }
+
+          // Mute / Unmute button for members of channels or groups
           ToolButton {
+            visible: (root.chatType === "channel" || root.chatType === "group") && root.isMember
+            icon.source: root.isMuted ? "qrc:/qt/qml/Silkite/assets/icons/unmute.svg" : "qrc:/qt/qml/Silkite/assets/icons/mute.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: root.isMuted ? "Unmute" : "Mute"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
+            onClicked: root.toggleMuteRequested(root.chatId, !root.isMuted)
+          }
+
+          // Leave button for members of channels or groups
+          ToolButton {
+            visible: (root.chatType === "channel" || root.chatType === "group") && root.isMember
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/leave.svg"
+            icon.width: 20
+            icon.height: 20
+            icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
+            focusPolicy: Qt.NoFocus
+            implicitWidth: 38
+            implicitHeight: 38
+            ToolTip.visible: hovered
+            ToolTip.text: "Leave"
+            background: Rectangle {
+              radius: 12
+              color: parent.hovered ? Theme.accent : "transparent"
+              border.color: parent.hovered ? Qt.rgba(1, 1, 1, 0.25) : "transparent"
+              border.width: 1
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 11
+                color: "transparent"
+                border.color: Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1
+                visible: parent.parent.hovered
+              }
+            }
+            onClicked: root.leaveChatRequested(root.chatId)
+          }
+
+          // Voice call button (1-on-1 private user chats only)
+          ToolButton {
+            visible: root.chatType === "user"
             icon.source: "qrc:/qt/qml/Silkite/assets/icons/call.svg"
             icon.width: 20
             icon.height: 20
@@ -539,8 +624,9 @@ Item {
             }
           }
 
-          // Video call button
+          // Video call button (1-on-1 private user chats only)
           ToolButton {
+            visible: root.chatType === "user"
             icon.source: "qrc:/qt/qml/Silkite/assets/icons/video.svg"
             icon.width: 20
             icon.height: 20
@@ -681,6 +767,8 @@ Item {
         topMargin: 8
         bottomMargin: 8
         boundsBehavior: Flickable.StopAtBounds
+        displayMarginBeginning: 600
+        displayMarginEnd: 600
         maximumFlickVelocity: 4000
         flickDeceleration: 1600
 
@@ -699,37 +787,14 @@ Item {
           root.lastKnownAtBottom = false
         }
 
-        NumberAnimation {
-          id: messageScrollAnim
-          target: messageListView
-          property: "contentY"
-          duration: 180
-          easing.type: Easing.OutCubic
-        }
-
-        WheelHandler {
-          id: messageWheelHandler
-          target: null
-          acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-          onWheel: (event) => {
-            if (event.angleDelta.y === 0) return
-
-            // Standard notch gives 120 units. Smoothly step contentY.
-            var step = (event.angleDelta.y / 120.0) * 120.0
-
-            // Bound checking:
-            var minY = messageListView.originY - messageListView.topMargin
-            var maxY = Math.max(minY, messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin)
-
-            var startY = messageScrollAnim.running ? messageScrollAnim.to : messageListView.contentY
-            var targetY = Math.max(minY, Math.min(startY - step, maxY))
-
-            messageScrollAnim.stop()
-            messageScrollAnim.from = messageListView.contentY
-            messageScrollAnim.to = targetY
-            messageScrollAnim.start()
-
-            event.accepted = true
+        ScrollBar.vertical: ScrollBar {
+          id: messageScrollBar
+          active: messageListView.moving || messageScrollBar.hovered || messageScrollBar.pressed
+          policy: ScrollBar.AsNeeded
+          contentItem: Rectangle {
+            implicitWidth: 5
+            radius: 2.5
+            color: messageScrollBar.hovered ? Theme.accent : Qt.rgba(Theme.primaryText.r, Theme.primaryText.g, Theme.primaryText.b, 0.45)
           }
         }
 
@@ -777,15 +842,6 @@ Item {
             var baseScale = isAnimation ? 180 : 280
             var w = mData.mediaWidth || 0
             var h = mData.mediaHeight || 0
-            if (w <= 0 || h <= 0) {
-              if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
-                w = borderlessImage.implicitWidth
-                h = borderlessImage.implicitHeight
-              } else if (captionedImage.implicitWidth > 0 && captionedImage.implicitHeight > 0) {
-                w = captionedImage.implicitWidth
-                h = captionedImage.implicitHeight
-              }
-            }
             if (w > 0 && h > 0) {
               var ratio = w / h
               if (ratio >= 1.0) {
@@ -806,15 +862,6 @@ Item {
             var minH = isAnimation ? 100 : 160
             var w = mData.mediaWidth || 0
             var h = mData.mediaHeight || 0
-            if (w <= 0 || h <= 0) {
-              if (borderlessImage.implicitWidth > 0 && borderlessImage.implicitHeight > 0) {
-                w = borderlessImage.implicitWidth
-                h = borderlessImage.implicitHeight
-              } else if (captionedImage.implicitWidth > 0 && captionedImage.implicitHeight > 0) {
-                w = captionedImage.implicitWidth
-                h = captionedImage.implicitHeight
-              }
-            }
             if (w > 0 && h > 0) {
               var ratio = w / h
               return Math.max(minH, Math.min(maxH, targetMediaWidth / ratio))
@@ -1126,7 +1173,7 @@ Item {
                 Image {
                   id: borderlessImage
                   anchors.fill: parent
-                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation && !msgDelegate.isSticker && !msgDelegate.mData.filePath.endsWith(".tgs")) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectFit
                   asynchronous: true
                   smooth: true
@@ -1351,11 +1398,12 @@ Item {
             // === Multi-Line / Reply / Document / Captioned Media Mode ===
             Column {
               id: bubbleCol
-              anchors.fill: parent
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
               anchors.leftMargin: msgDelegate.isVisualMedia ? 0 : 12
               anchors.rightMargin: msgDelegate.isVisualMedia ? 0 : 12
               anchors.topMargin: msgDelegate.isVisualMedia ? 0 : 7
-              anchors.bottomMargin: 7
               visible: !msgDelegate.fitsSingleLine && !msgDelegate.isBorderlessMedia
               spacing: 6
               z: 5
@@ -1425,7 +1473,7 @@ Item {
                 Image {
                   id: captionedImage
                   anchors.fill: parent
-                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation) ? ("file://" + msgDelegate.mData.filePath) : ""
+                  source: (msgDelegate.mData.filePath && msgDelegate.mData.filePath !== "" && !msgDelegate.isAnimation && msgDelegate.isVisualMedia && !msgDelegate.mData.filePath.endsWith(".tgs")) ? ("file://" + msgDelegate.mData.filePath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   smooth: true
@@ -2257,8 +2305,8 @@ Item {
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    height: root.hasConversation ? (composerCol.implicitHeight + 20) : 0
-    visible: root.hasConversation
+    height: root.showComposer ? (composerCol.implicitHeight + 20) : 0
+    visible: root.showComposer
     clip: false
 
     color: "transparent"
@@ -2646,107 +2694,107 @@ Item {
           }
         }
       }
+    }
 
+    Rectangle {
+      id: compactComposerToolsPopup
+      parent: root
+      visible: opacity > 0
+      opacity: (root.composerControlsCollapsed && root.composerToolsExpanded) ? 1.0 : 0.0
+
+      // Calculate absolute position centered above compactComposerToolsButton
+      property var arrowPos: compactComposerToolsButton.mapToItem(root, 0, 0)
+      x: Math.max(8, Math.min(root.width - width - 8,
+        arrowPos.x + (compactComposerToolsButton.width - width) / 2))
+      property real targetY: arrowPos.y - height - 8
+      y: (root.composerControlsCollapsed && root.composerToolsExpanded) ? targetY : targetY + 12
+
+      width: 42
+      height: compactToolsColumn.implicitHeight + 12
+      radius: width / 2
+      color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.95)
+      border.color: Theme.divider
+      border.width: 1
+      z: 70
+
+      // Subtle pill glow/inner highlight
       Rectangle {
-        id: compactComposerToolsPopup
-        parent: root
-        visible: opacity > 0
-        opacity: (root.composerControlsCollapsed && root.composerToolsExpanded) ? 1.0 : 0.0
-
-        // Calculate absolute position centered above compactComposerToolsButton
-        property var arrowPos: compactComposerToolsButton.mapToItem(root, 0, 0)
-        x: Math.max(8, Math.min(root.width - width - 8,
-          arrowPos.x + (compactComposerToolsButton.width - width) / 2))
-        property real targetY: arrowPos.y - height - 8
-        y: (root.composerControlsCollapsed && root.composerToolsExpanded) ? targetY : targetY + 12
-
-        width: 42
-        height: compactToolsColumn.implicitHeight + 12
-        radius: width / 2
-        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.95)
-        border.color: Theme.divider
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: parent.radius - 1
+        color: "transparent"
+        border.color: Qt.rgba(1, 1, 1, 0.06)
         border.width: 1
-        z: 70
+      }
 
-        // Subtle pill glow/inner highlight
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: 1
-          radius: parent.radius - 1
-          color: "transparent"
-          border.color: Qt.rgba(1, 1, 1, 0.06)
-          border.width: 1
-        }
+      Column {
+        id: compactToolsColumn
+        anchors.centerIn: parent
+        spacing: 4
 
-        Column {
-          id: compactToolsColumn
-          anchors.centerIn: parent
-          spacing: 4
+        ToolButton {
+          implicitWidth: 32; implicitHeight: 32; padding: 0
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/emoji.svg"
+          icon.width: 18; icon.height: 18
+          icon.color: hovered ? Theme.accent : Theme.secondaryText
+          ToolTip.visible: hovered
+          ToolTip.text: "Emojis"
+          ToolTip.delay: 300
+          background: Rectangle {
+            radius: 16
+            color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+          }
+          onClicked: { root.toggleComposerPopup("emoji"); root.composerToolsExpanded = false }
+        }
+        ToolButton {
+          implicitWidth: 32; implicitHeight: 32; padding: 0
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/sticker.svg"
+          icon.width: 18; icon.height: 18
+          icon.color: hovered ? Theme.accent : Theme.secondaryText
+          ToolTip.visible: hovered
+          ToolTip.text: "Stickers"
+          ToolTip.delay: 300
+          background: Rectangle {
+            radius: 16
+            color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+          }
+          onClicked: { root.toggleComposerPopup("sticker"); root.composerToolsExpanded = false }
+        }
+        ToolButton {
+          implicitWidth: 32; implicitHeight: 32; padding: 0
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/gif.svg"
+          icon.width: 18; icon.height: 18
+          icon.color: hovered ? Theme.accent : Theme.secondaryText
+          ToolTip.visible: hovered
+          ToolTip.text: "GIFs"
+          ToolTip.delay: 300
+          background: Rectangle {
+            radius: 16
+            color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+          }
+          onClicked: { root.toggleComposerPopup("gif"); root.composerToolsExpanded = false }
+        }
+        ToolButton {
+          implicitWidth: 32; implicitHeight: 32; padding: 0
+          icon.source: "qrc:/qt/qml/Silkite/assets/icons/attach.svg"
+          icon.width: 18; icon.height: 18
+          icon.color: hovered ? Theme.accent : Theme.secondaryText
+          ToolTip.visible: hovered
+          ToolTip.text: "Attach file"
+          ToolTip.delay: 300
+          background: Rectangle {
+            radius: 16
+            color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+          }
+          onClicked: { fileDialog.open(); root.composerToolsExpanded = false }
+        }
+      }
 
-          ToolButton {
-            implicitWidth: 32; implicitHeight: 32; padding: 0
-            icon.source: "qrc:/qt/qml/Silkite/assets/icons/emoji.svg"
-            icon.width: 18; icon.height: 18
-            icon.color: hovered ? Theme.accent : Theme.secondaryText
-            ToolTip.visible: hovered
-            ToolTip.text: "Emojis"
-            ToolTip.delay: 300
-            background: Rectangle {
-              radius: 16
-              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
-            }
-            onClicked: { root.toggleComposerPopup("emoji"); root.composerToolsExpanded = false }
-          }
-          ToolButton {
-            implicitWidth: 32; implicitHeight: 32; padding: 0
-            icon.source: "qrc:/qt/qml/Silkite/assets/icons/sticker.svg"
-            icon.width: 18; icon.height: 18
-            icon.color: hovered ? Theme.accent : Theme.secondaryText
-            ToolTip.visible: hovered
-            ToolTip.text: "Stickers"
-            ToolTip.delay: 300
-            background: Rectangle {
-              radius: 16
-              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
-            }
-            onClicked: { root.toggleComposerPopup("sticker"); root.composerToolsExpanded = false }
-          }
-          ToolButton {
-            implicitWidth: 32; implicitHeight: 32; padding: 0
-            icon.source: "qrc:/qt/qml/Silkite/assets/icons/gif.svg"
-            icon.width: 18; icon.height: 18
-            icon.color: hovered ? Theme.accent : Theme.secondaryText
-            ToolTip.visible: hovered
-            ToolTip.text: "GIFs"
-            ToolTip.delay: 300
-            background: Rectangle {
-              radius: 16
-              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
-            }
-            onClicked: { root.toggleComposerPopup("gif"); root.composerToolsExpanded = false }
-          }
-          ToolButton {
-            implicitWidth: 32; implicitHeight: 32; padding: 0
-            icon.source: "qrc:/qt/qml/Silkite/assets/icons/attach.svg"
-            icon.width: 18; icon.height: 18
-            icon.color: hovered ? Theme.accent : Theme.secondaryText
-            ToolTip.visible: hovered
-            ToolTip.text: "Attach file"
-            ToolTip.delay: 300
-            background: Rectangle {
-              radius: 16
-              color: parent.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
-            }
-            onClicked: { fileDialog.open(); root.composerToolsExpanded = false }
-          }
-        }
-
-        Behavior on opacity {
-          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-        }
-        Behavior on y {
-          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-        }
+      Behavior on opacity {
+        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+      }
+      Behavior on y {
+        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
       }
     }
 

@@ -525,6 +525,28 @@ QVariantMap toUserContactMap(const td::td_api::user *u, const QString &statusTex
   };
 }
 
+static bool isMemberStatus(const td::td_api::ChatMemberStatus *status) {
+  if (!status) return true;
+  const auto id = status->get_id();
+  if (id == td::td_api::chatMemberStatusMember::ID ||
+      id == td::td_api::chatMemberStatusAdministrator::ID) {
+    return true;
+  }
+  if (id == td::td_api::chatMemberStatusCreator::ID) {
+    auto *creator = static_cast<const td::td_api::chatMemberStatusCreator *>(status);
+    return creator->is_member_;
+  }
+  if (id == td::td_api::chatMemberStatusRestricted::ID) {
+    auto *restricted = static_cast<const td::td_api::chatMemberStatusRestricted *>(status);
+    return restricted->is_member_;
+  }
+  if (id == td::td_api::chatMemberStatusLeft::ID ||
+      id == td::td_api::chatMemberStatusBanned::ID) {
+    return false;
+  }
+  return true;
+}
+
 QVariantMap toChatMap(const td::td_api::chat *chat) {
   if (!chat) return {};
   const QString name = QString::fromStdString(chat->title_);
@@ -567,6 +589,12 @@ QVariantMap toChatMap(const td::td_api::chat *chat) {
     }
   }
 
+  bool isMember = true;
+  bool isMuted = false;
+  if (chat->notification_settings_) {
+    isMuted = (chat->notification_settings_->mute_for_ > 0);
+  }
+
   return {{"chatId", qint64(chat->id_)}, {"name", name}, {"lastMessage", preview(chat->last_message_.get())},
           {"time", chat->last_message_ ? QDateTime::fromSecsSinceEpoch(chat->last_message_->date_).toLocalTime().toString("HH:mm") : QString()},
           {"initials", name.trimmed().isEmpty() ? QStringLiteral("?") : name.trimmed().left(2).toUpper()},
@@ -576,7 +604,9 @@ QVariantMap toChatMap(const td::td_api::chat *chat) {
           {"canBeDeletedOnlyForSelf", chat->can_be_deleted_only_for_self_},
           {"canBeDeletedForAllUsers", chat->can_be_deleted_for_all_users_},
           {"type", chatTypeStr},
-          {"userId", targetUserId}};
+          {"userId", targetUserId},
+          {"isMember", isMember},
+          {"isMuted", isMuted}};
 }
 
 qint64 mainChatOrder(const td::td_api::array<td::td_api::object_ptr<td::td_api::chatPosition>> &positions) {
@@ -709,6 +739,28 @@ void TelegramWorker::addRecentlyFoundChat(qint64 chatId) {
   Command cmd;
   cmd.type = CommandType::AddRecentlyFoundChat;
   cmd.chatId = chatId;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::joinChat(qint64 chatId) {
+  Command cmd;
+  cmd.type = CommandType::JoinChat;
+  cmd.chatId = chatId;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::leaveChat(qint64 chatId) {
+  Command cmd;
+  cmd.type = CommandType::LeaveChat;
+  cmd.chatId = chatId;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::toggleChatMute(qint64 chatId, bool mute) {
+  Command cmd;
+  cmd.type = CommandType::ToggleChatMute;
+  cmd.chatId = chatId;
+  cmd.flag = mute;
   enqueue(std::move(cmd));
 }
 
@@ -1093,6 +1145,26 @@ void TelegramWorker::run() {
             send(activeClientId, td::td_api::make_object<td::td_api::addRecentlyFoundChat>(command.chatId));
           }
         }
+        if (command.type == CommandType::JoinChat) {
+          if (command.chatId != 0) {
+            send(activeClientId, td::td_api::make_object<td::td_api::joinChat>(command.chatId));
+            send(activeClientId, td::td_api::make_object<td::td_api::getChat>(command.chatId));
+          }
+        }
+        if (command.type == CommandType::LeaveChat) {
+          if (command.chatId != 0) {
+            send(activeClientId, td::td_api::make_object<td::td_api::leaveChat>(command.chatId));
+            send(activeClientId, td::td_api::make_object<td::td_api::getChat>(command.chatId));
+          }
+        }
+        if (command.type == CommandType::ToggleChatMute) {
+          if (command.chatId != 0) {
+            auto settings = td::td_api::make_object<td::td_api::chatNotificationSettings>();
+            settings->use_default_mute_for_ = false;
+            settings->mute_for_ = command.flag ? 315360000 : 0;
+            send(activeClientId, td::td_api::make_object<td::td_api::setChatNotificationSettings>(command.chatId, std::move(settings)));
+          }
+        }
       }
     }
 
@@ -1329,6 +1401,13 @@ void TelegramWorker::run() {
       auto *u = static_cast<td::td_api::updateChatPermissions *>(response.object.get());
       if (u->permissions_) {
         emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"canSendMessages", u->permissions_->can_send_basic_messages_}});
+      }
+      continue;
+    }
+    if (response.client_id == activeClientId && response.object->get_id() == td::td_api::updateChatNotificationSettings::ID) {
+      auto *u = static_cast<td::td_api::updateChatNotificationSettings *>(response.object.get());
+      if (u->notification_settings_) {
+        emit chatUpdated({{"chatId", qint64(u->chat_id_)}, {"isMuted", u->notification_settings_->mute_for_ > 0}});
       }
       continue;
     }
@@ -1757,10 +1836,11 @@ void TelegramWorker::run() {
       if (u->basic_group_) {
         const qint64 bgId = u->basic_group_->id_;
         const int count = u->basic_group_->member_count_;
+        const bool member = isMemberStatus(u->basic_group_->status_.get());
         basicGroupMemberCount[bgId] = count;
         for (auto it = chatBasicGroupIds.begin(); it != chatBasicGroupIds.end(); ++it) {
           if (it.value() == bgId) {
-            emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}});
+            emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}, {"isMember", member}});
           }
         }
       }
@@ -1771,10 +1851,11 @@ void TelegramWorker::run() {
       auto *bg = static_cast<td::td_api::basicGroup *>(response.object.get());
       const qint64 bgId = bg->id_;
       const int count = bg->member_count_;
+      const bool member = isMemberStatus(bg->status_.get());
       basicGroupMemberCount[bgId] = count;
       for (auto it = chatBasicGroupIds.begin(); it != chatBasicGroupIds.end(); ++it) {
         if (it.value() == bgId) {
-          emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}});
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", QStringLiteral("%1 members").arg(count)}, {"isOnline", false}, {"isMember", member}});
         }
       }
       continue;
@@ -1786,6 +1867,7 @@ void TelegramWorker::run() {
         const qint64 sgId = u->supergroup_->id_;
         const int count = u->supergroup_->member_count_;
         const bool isChan = u->supergroup_->is_channel_;
+        const bool member = isMemberStatus(u->supergroup_->status_.get());
         supergroupMemberCount[sgId] = count;
         supergroupIsChannel[sgId] = isChan;
         for (auto it = chatSupergroupIds.begin(); it != chatSupergroupIds.end(); ++it) {
@@ -1793,7 +1875,7 @@ void TelegramWorker::run() {
             const QString desc = isChan
                 ? QStringLiteral("%1 subscribers").arg(count)
                 : QStringLiteral("%1 members").arg(count);
-            emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}});
+            emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}, {"isMember", member}});
           }
         }
       }
@@ -1805,6 +1887,7 @@ void TelegramWorker::run() {
       const qint64 sgId = sg->id_;
       const int count = sg->member_count_;
       const bool isChan = sg->is_channel_;
+      const bool member = isMemberStatus(sg->status_.get());
       supergroupMemberCount[sgId] = count;
       supergroupIsChannel[sgId] = isChan;
       for (auto it = chatSupergroupIds.begin(); it != chatSupergroupIds.end(); ++it) {
@@ -1812,7 +1895,7 @@ void TelegramWorker::run() {
           const QString desc = isChan
               ? QStringLiteral("%1 subscribers").arg(count)
               : QStringLiteral("%1 members").arg(count);
-          emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}});
+          emit chatUpdated({{"chatId", it.key()}, {"statusText", desc}, {"isOnline", false}, {"isMember", member}});
         }
       }
       continue;

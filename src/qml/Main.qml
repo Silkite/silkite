@@ -1249,8 +1249,11 @@ ApplicationWindow {
 
   Connections {
     target: telegramClient
-    function onChatUpdated() {
-      window.chatRevision++
+    function onChatUpdated(chat) {
+      var cid = chat ? (chat.chatId || 0) : 0
+      if (!cid || cid === window.selectedChatId || cid === window.secondarySelectedChatId) {
+        window.chatRevision++
+      }
       if ((window.selectedChatId === 0 || !window.selectedChatId) && chatListModel.rowCount() > 0) {
         var firstChat = chatListModel.chatAt(0)
         if (firstChat && firstChat.chatId) {
@@ -1796,6 +1799,9 @@ ApplicationWindow {
             statusText: window.selectedChat.statusText || ""
             isOnline: window.selectedChat.isOnline || false
             canSendMessages: window.selectedChat.canSendMessages !== undefined ? window.selectedChat.canSendMessages : true
+            chatType: window.selectedChat.type || "group"
+            isMember: window.selectedChat.isMember !== undefined ? window.selectedChat.isMember : true
+            isMuted: window.selectedChat.isMuted !== undefined ? window.selectedChat.isMuted : false
             messageModel: telegramClient.messageModel
             messages: telegramClient.conversationMessages
             typing: telegramClient.typing
@@ -1835,6 +1841,24 @@ ApplicationWindow {
             onToggleReactionRequested: function(messageId, emoji, isChosen) {
               if (window.selectedChatId && messageId) {
                 telegramClient.toggleReaction(window.selectedChatId, messageId, emoji, isChosen)
+              }
+            }
+
+            onJoinChatRequested: function(cid) {
+              if (cid) {
+                telegramClient.joinChat(cid)
+              }
+            }
+
+            onLeaveChatRequested: function(cid) {
+              if (cid) {
+                telegramClient.leaveChat(cid)
+              }
+            }
+
+            onToggleMuteRequested: function(cid, mute) {
+              if (cid) {
+                telegramClient.toggleChatMute(cid, mute)
               }
             }
           }
@@ -1930,6 +1954,9 @@ ApplicationWindow {
             statusText: window.secondarySelectedChat.statusText || ""
             isOnline: window.secondarySelectedChat.isOnline || false
             canSendMessages: window.secondarySelectedChat.canSendMessages !== undefined ? window.secondarySelectedChat.canSendMessages : true
+            chatType: window.secondarySelectedChat.type || "group"
+            isMember: window.secondarySelectedChat.isMember !== undefined ? window.secondarySelectedChat.isMember : true
+            isMuted: window.secondarySelectedChat.isMuted !== undefined ? window.secondarySelectedChat.isMuted : false
             messageModel: telegramClient.secondaryMessageModel
             messages: telegramClient.secondaryConversationMessages
             typing: telegramClient.secondaryTyping
@@ -1963,6 +1990,24 @@ ApplicationWindow {
             onToggleReactionRequested: function(messageId, emoji, isChosen) {
               if (window.secondarySelectedChatId && messageId) {
                 telegramClient.toggleReaction(window.secondarySelectedChatId, messageId, emoji, isChosen)
+              }
+            }
+
+            onJoinChatRequested: function(cid) {
+              if (cid) {
+                telegramClient.joinChat(cid)
+              }
+            }
+
+            onLeaveChatRequested: function(cid) {
+              if (cid) {
+                telegramClient.leaveChat(cid)
+              }
+            }
+
+            onToggleMuteRequested: function(cid, mute) {
+              if (cid) {
+                telegramClient.toggleChatMute(cid, mute)
               }
             }
           }
@@ -2216,8 +2261,8 @@ ApplicationWindow {
     id: dragReplicaItem
     z: 9999
     visible: window.isDraggingChatReplica && window.draggedChatData !== null
-    width: 260
-    height: 64
+    width: 220
+    height: 52
     x: window.dragReplicaTargetX
     y: window.dragReplicaTargetY
 
@@ -2266,68 +2311,81 @@ ApplicationWindow {
 
       RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 12
+        anchors.leftMargin: 10
         anchors.rightMargin: 12
         spacing: 10
 
-        // Avatar
+        // Profile Avatar
         Rectangle {
-          Layout.preferredWidth: 40
-          Layout.preferredHeight: 40
-          radius: 20
+          Layout.preferredWidth: 36
+          Layout.preferredHeight: 36
+          radius: 18
           color: (window.draggedChatData && window.draggedChatData.avatarColor) ? window.draggedChatData.avatarColor : Theme.accent
+          clip: true
           border.color: Qt.rgba(1, 1, 1, 0.2)
           border.width: 1
 
+          Image {
+            id: replicaAvatarImage
+            anchors.fill: parent
+            anchors.margins: 1
+            visible: false
+            source: (window.draggedChatData && window.draggedChatData.avatarPath) ? ("file://" + window.draggedChatData.avatarPath) : ""
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            smooth: true
+          }
+
+          OpacityMask {
+            anchors.fill: parent
+            anchors.margins: 1
+            visible: (window.draggedChatData && window.draggedChatData.avatarPath) ? true : false
+            source: replicaAvatarImage
+            maskSource: Rectangle {
+              width: replicaAvatarImage.width
+              height: replicaAvatarImage.height
+              radius: width / 2
+              color: "white"
+            }
+          }
+
           Label {
             anchors.centerIn: parent
+            visible: !(window.draggedChatData && window.draggedChatData.avatarPath)
             text: (window.draggedChatData && window.draggedChatData.initials) ? window.draggedChatData.initials : "?"
             color: "#FFFFFF"
             font.bold: true
-            font.pixelSize: 14
+            font.pixelSize: 13
           }
         }
 
-        // Details
-        ColumnLayout {
+        // Chat / Contact Name ONLY
+        Label {
+          text: (window.draggedChatData && window.draggedChatData.name) ? window.draggedChatData.name : ""
+          color: Theme.primaryText
+          font.bold: true
+          font.pixelSize: 13
+          elide: Text.ElideRight
           Layout.fillWidth: true
-          spacing: 2
-
-          Label {
-            text: (window.draggedChatData && window.draggedChatData.name) ? window.draggedChatData.name : ""
-            color: Theme.primaryText
-            font.bold: true
-            font.pixelSize: 13
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-          }
-
-          Label {
-            text: window.dragOverSecondaryPane ? "Release to open here" : ((window.draggedChatData && window.draggedChatData.lastMessage) ? window.draggedChatData.lastMessage : "Chat")
-            color: window.dragOverSecondaryPane ? Theme.accent : Theme.secondaryText
-            font.pixelSize: 11
-            font.weight: window.dragOverSecondaryPane ? Font.Medium : Font.Normal
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-          }
+          verticalAlignment: Text.AlignVCenter
         }
       }
     }
+  }
 
-    GlobalSearchBar {
-      id: globalSearchBar
+  GlobalSearchBar {
+    id: globalSearchBar
 
-      onOpenChatRequested: function(chatId, userId) {
-        if (chatId && chatId !== 0) {
-          window.selectedChatId = chatId
-          telegramClient.loadConversation(chatId)
-          if (window.compactLayout) {
-            window.chatListExpanded = false
-            window.chatListAutoExpanded = false
-          }
-        } else if (userId && userId !== 0) {
-          telegramClient.createPrivateChatForUser(userId)
+    onOpenChatRequested: function(chatId, userId) {
+      if (chatId && chatId !== 0) {
+        window.selectedChatId = chatId
+        telegramClient.loadConversation(chatId)
+        if (window.compactLayout) {
+          window.chatListExpanded = false
+          window.chatListAutoExpanded = false
         }
+      } else if (userId && userId !== 0) {
+        telegramClient.createPrivateChatForUser(userId)
       }
     }
   }

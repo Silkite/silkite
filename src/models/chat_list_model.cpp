@@ -70,6 +70,15 @@ QVariant ChatListModel::data(const QModelIndex &index, int role) const {
   case CanBeDeletedForAllUsersRole:
     return chat.canBeDeletedForAllUsers;
 
+  case TypeRole:
+    return chat.type;
+
+  case IsMemberRole:
+    return chat.isMember;
+
+  case IsMutedRole:
+    return chat.isMuted;
+
   default:
     return {};
   }
@@ -91,6 +100,9 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
   roles[FolderNamesRole] = "folderNames";
   roles[CanBeDeletedOnlyForSelfRole] = "canBeDeletedOnlyForSelf";
   roles[CanBeDeletedForAllUsersRole] = "canBeDeletedForAllUsers";
+  roles[TypeRole] = "type";
+  roles[IsMemberRole] = "isMember";
+  roles[IsMutedRole] = "isMuted";
 
   return roles;
 }
@@ -210,7 +222,10 @@ QVariantMap ChatListModel::chatById(qint64 chatId) const {
           {"isOnline", c.isOnline},
           {"canSendMessages", c.canSendMessages},
           {"canBeDeletedOnlyForSelf", c.canBeDeletedOnlyForSelf},
-          {"canBeDeletedForAllUsers", c.canBeDeletedForAllUsers}};
+          {"canBeDeletedForAllUsers", c.canBeDeletedForAllUsers},
+          {"type", c.type},
+          {"isMember", c.isMember},
+          {"isMuted", c.isMuted}};
 }
 
 void ChatListModel::removeChat(qint64 chatId) {
@@ -254,6 +269,9 @@ void ChatListModel::upsertChat(const QVariantMap &v) {
   if (v.contains("canSendMessages")) c.canSendMessages = v.value("canSendMessages").toBool();
   if (v.contains("canBeDeletedOnlyForSelf")) c.canBeDeletedOnlyForSelf = v.value("canBeDeletedOnlyForSelf").toBool();
   if (v.contains("canBeDeletedForAllUsers")) c.canBeDeletedForAllUsers = v.value("canBeDeletedForAllUsers").toBool();
+  if (v.contains("type") && !v.value("type").toString().isEmpty()) c.type = v.value("type").toString();
+  if (v.contains("isMember")) c.isMember = v.value("isMember").toBool();
+  if (v.contains("isMuted")) c.isMuted = v.value("isMuted").toBool();
   if (v.contains("order")) {
     c.order = v.value("order").toLongLong();
   }
