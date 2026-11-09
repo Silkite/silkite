@@ -2330,13 +2330,15 @@ Item {
       spacing: 6
 
       // Animated typing indicator positioned directly below messages and right above the input
+      // Height is permanently reserved so showing/hiding does not resize or flicker the chatbox
       RowLayout {
         id: typingIndicatorRow
         Layout.fillWidth: true
         Layout.leftMargin: 6
         Layout.bottomMargin: 2
+        Layout.preferredHeight: 18
         spacing: 6
-        visible: root.typing
+        visible: true
         opacity: root.typing ? 1.0 : 0.0
 
         Behavior on opacity {
