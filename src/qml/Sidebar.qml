@@ -12,37 +12,18 @@ Item {
   signal navigationRequested(string page)
   signal profileRequested()
 
-  implicitWidth: 50
+  implicitWidth: 44
   width: implicitWidth
 
-  // Floating liquid glass background container with rounded borders
-  Shape {
+  // Floating liquid glass background container with flat straight edge
+  Rectangle {
     id: glassBody
     anchors.fill: parent
-    layer.enabled: true
-    layer.smooth: true
-    layer.samples: 8
-
-    ShapePath {
-      fillColor: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
-      strokeColor: "transparent"
-      strokeWidth: 0
-      capStyle: ShapePath.RoundCap
-      joinStyle: ShapePath.RoundJoin
-
-      startX: 0
-      startY: 0
-      PathLine { x: glassBody.width; y: 0 }
-      PathArc { x: glassBody.width - 10; y: 10; radiusX: 10; radiusY: 10; useLargeArc: false; direction: PathArc.Counterclockwise }
-      PathLine { x: glassBody.width - 10; y: glassBody.height }
-      PathLine { x: 0; y: glassBody.height }
-      PathLine { x: 0; y: 0 }
-    }
+    color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
 
     ColumnLayout {
       id: columnContent
       anchors.centerIn: parent
-      anchors.horizontalCenterOffset: -5
       spacing: 5
 
       // Chats navigation icon

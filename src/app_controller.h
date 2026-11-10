@@ -30,6 +30,12 @@ public:
   Q_INVOKABLE QString getClipboardFilePath();
   Q_INVOKABLE void clearClipboardCache();
 
+  // Split pane persistence
+  Q_INVOKABLE qint64 savedSecondaryChatId() const;
+  Q_INVOKABLE void saveSecondaryChatId(qint64 chatId);
+  Q_INVOKABLE bool savedSplitPaneActive() const;
+  Q_INVOKABLE void saveSplitPaneActive(bool active);
+
 signals:
   void lastMessageChanged();
   void messageReceived(const QString &message);

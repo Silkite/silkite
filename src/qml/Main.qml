@@ -72,6 +72,8 @@ ApplicationWindow {
 
   property var selectedChatId: 0
   property string activeSection: "chats"
+  property string activeSettingsCategory: "account"
+  property string activeSettingsSection: "profile_card"
 
   property var selectedChat: {
     chatRevision;
@@ -128,12 +130,40 @@ ApplicationWindow {
     if (!canEnableSplitPane) return
     secondarySelectedChatId = chatId
     splitPaneActive = true
+    if (appController) {
+      appController.saveSecondaryChatId(chatId)
+      appController.saveSplitPaneActive(true)
+    }
     telegramClient.loadSecondaryConversation(chatId)
+  }
+
+  function resetSecondaryChat() {
+    secondarySelectedChatId = 0
+    if (appController) {
+      appController.saveSecondaryChatId(0)
+    }
+    telegramClient.closeSecondaryConversation()
+  }
+
+  function toggleSplitPane() {
+    if (splitPaneActive) {
+      closeSecondaryPane()
+    } else {
+      splitPaneActive = true
+      if (appController) {
+        appController.saveSplitPaneActive(true)
+      }
+      if (secondarySelectedChatId && secondarySelectedChatId !== 0) {
+        telegramClient.loadSecondaryConversation(secondarySelectedChatId)
+      }
+    }
   }
 
   function closeSecondaryPane() {
     splitPaneActive = false
-    secondarySelectedChatId = 0
+    if (appController) {
+      appController.saveSplitPaneActive(false)
+    }
     telegramClient.closeSecondaryConversation()
   }
 
@@ -241,8 +271,6 @@ ApplicationWindow {
           chatOrganizationManager.resetFolders()
         if (appController)
           appController.clearClipboardCache()
-        if (settingsPopup && settingsPopup.opened)
-          settingsPopup.close()
         window.activeSection = "chats"
       }
     }
@@ -737,211 +765,8 @@ ApplicationWindow {
     }
   }
 
-  Popup {
-    id: settingsPopup
-
-    x: (window.width - width) / 2
-    y: (window.height - height) / 2
-    width: Math.min(window.width - 48, 520)
-    height: settingsContent.implicitHeight + 48
-    modal: true
-    focus: true
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-    background: Item {
-      Rectangle {
-        anchors.fill: settingsGlass
-        anchors.topMargin: 2
-        anchors.bottomMargin: -2
-        anchors.leftMargin: -1
-        anchors.rightMargin: -1
-        radius: settingsGlass.radius + 1
-        color: Qt.rgba(0, 0, 0, 0.22)
-        z: -1
-      }
-      Rectangle {
-        id: settingsGlass
-        anchors.fill: parent
-        radius: 18
-        color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
-        border.color: Theme.divider
-        border.width: 1
-
-        Rectangle {
-          anchors.fill: parent
-          anchors.margins: 1
-          radius: 17
-          color: "transparent"
-          border.color: Qt.rgba(1, 1, 1, 0.08)
-          border.width: 1
-        }
-      }
-    }
-
-    onClosed: {
-      if (window.activeSection === "settings")
-        window.activeSection = "chats"
-    }
-
-    ColumnLayout {
-      id: settingsContent
-      anchors.fill: parent
-      anchors.margins: 24
-      spacing: 18
-
-      Label {
-        text: "Settings"
-        color: Theme.primaryText
-        font.pixelSize: 26
-        font.bold: true
-        Layout.alignment: Qt.AlignHCenter
-      }
-
-      Label {
-        text: "Theme"
-        color: Theme.primaryText
-        font.pixelSize: 16
-      }
-
-      ComboBox {
-        id: themeSelector
-        Layout.fillWidth: true
-        Layout.preferredHeight: 40
-        model: Theme.availableThemes
-        currentIndex: Math.max(0, model.indexOf(Theme.currentTheme))
-        onActivated: Theme.selectTheme(currentText)
-
-        contentItem: Label {
-          leftPadding: 14
-          text: themeSelector.displayText
-          color: Theme.primaryText
-          verticalAlignment: Text.AlignVCenter
-          font.pixelSize: 14
-        }
-
-        background: Rectangle {
-          radius: 12
-          color: Theme.controlBackground
-          border.color: themeSelector.activeFocus ? Theme.accent : Theme.divider
-          border.width: 1
-
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: 11
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
-          }
-        }
-
-        popup: Popup {
-          y: themeSelector.height + 6
-          width: themeSelector.width
-          implicitHeight: Math.min(240, contentItem.implicitHeight + 12)
-          padding: 6
-
-          background: Item {
-            Rectangle {
-              anchors.fill: themePopupGlass
-              anchors.topMargin: 2
-              anchors.bottomMargin: -2
-              anchors.leftMargin: -1
-              anchors.rightMargin: -1
-              radius: themePopupGlass.radius + 1
-              color: Qt.rgba(0, 0, 0, 0.22)
-              z: -1
-            }
-            Rectangle {
-              id: themePopupGlass
-              anchors.fill: parent
-              radius: 12
-              color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.94)
-              border.color: Theme.divider
-              border.width: 1
-              Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                radius: 11
-                color: "transparent"
-                border.color: Qt.rgba(1, 1, 1, 0.1)
-                border.width: 1
-              }
-            }
-          }
-
-          contentItem: ListView {
-            clip: true
-            implicitHeight: contentHeight
-            model: themeSelector.popup.visible ? themeSelector.delegateModel : null
-            currentIndex: themeSelector.highlightedIndex
-          }
-        }
-
-        delegate: ItemDelegate {
-          width: themeSelector.width
-          text: modelData
-          contentItem: Label {
-            text: modelData
-            color: highlighted ? Theme.accentText : Theme.primaryText
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: 8
-            font.pixelSize: 14
-          }
-          background: Rectangle {
-            color: highlighted ? Theme.accent : "transparent"
-            radius: 8
-          }
-        }
-      }
-
-      Label {
-        text: "Silkite stores its theme palette in " + Theme.configFilePath()
-        color: Theme.secondaryText
-        wrapMode: Text.WordWrap
-        Layout.fillWidth: true
-      }
-
-      Rectangle {
-        Layout.fillWidth: true
-        height: 1
-        color: Theme.divider
-      }
-
-      Button {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.preferredHeight: 36
-        Layout.preferredWidth: 140
-        background: Rectangle {
-          radius: 10
-          color: parent.down ? Qt.darker("#dc3545", 1.1) : (parent.hovered ? "#e04b59" : "#dc3545")
-        }
-        contentItem: Text {
-          text: "Log Out"
-          color: "white"
-          font.bold: true
-          font.pixelSize: 13
-          horizontalAlignment: Text.AlignHCenter
-          verticalAlignment: Text.AlignVCenter
-        }
-        onClicked: {
-          settingsPopup.close()
-          telegramClient.logOut()
-        }
-      }
-    }
-  }
-
   ContactProfileDialog {
     id: contactProfileDialog
-  }
-
-  UserProfileDialog {
-    id: userProfileDialog
-    onClosed: {
-      if (window.activeSection === "profile")
-        window.activeSection = "chats"
-    }
   }
 
   function showContactProfile(profileData) {
@@ -1248,15 +1073,10 @@ ApplicationWindow {
   Connections {
     target: window
     function onActiveSectionChanged() {
-      if (window.activeSection === "settings" && telegramClient.authorizationState === "ready")
-        settingsPopup.open()
-      else if (settingsPopup.opened)
-        settingsPopup.close()
-
-      if (window.activeSection === "profile" && telegramClient.authorizationState === "ready")
-        userProfileDialog.openProfile()
-      else if (userProfileDialog.opened)
-        userProfileDialog.close()
+      if (window.activeSection === "profile") {
+        window.activeSection = "settings"
+        window.activeSettingsCategory = "account"
+      }
     }
   }
 
@@ -1272,6 +1092,20 @@ ApplicationWindow {
         if (firstChat && firstChat.chatId) {
           window.selectedChatId = firstChat.chatId
           telegramClient.loadConversation(firstChat.chatId)
+        }
+      }
+      // Restore persistent secondary split pane chat if saved
+      if (appController && window.canEnableSplitPane) {
+        if (!window.splitPaneActive && appController.savedSplitPaneActive()) {
+          window.splitPaneActive = true
+        }
+        var savedSecId = appController.savedSecondaryChatId()
+        if (savedSecId && savedSecId !== 0 && (window.secondarySelectedChatId === 0 || !window.secondarySelectedChatId)) {
+          var secChat = chatListModel.chatById(savedSecId)
+          if (secChat && secChat.name) {
+            window.secondarySelectedChatId = savedSecId
+            telegramClient.loadSecondaryConversation(savedSecId)
+          }
         }
       }
     }
@@ -1481,11 +1315,7 @@ ApplicationWindow {
             }
           }
           onClicked: {
-            if (window.splitPaneActive) {
-              window.closeSecondaryPane()
-            } else {
-              window.splitPaneActive = true
-            }
+            window.toggleSplitPane()
           }
         }
       }
@@ -1508,7 +1338,7 @@ ApplicationWindow {
         anchors.topMargin: 0
         anchors.bottomMargin: 0
         anchors.leftMargin: 0
-        width: 50
+        width: 44
         z: 10
 
         Sidebar {
@@ -1525,12 +1355,11 @@ ApplicationWindow {
           }
 
           onProfileRequested: {
-            if (window.activeSection === "profile") {
-              userProfileDialog.close()
+            if (window.activeSection === "settings" && window.activeSettingsCategory === "account") {
               window.activeSection = "chats"
             } else {
-              window.activeSection = "profile"
-              userProfileDialog.openProfile()
+              window.activeSettingsCategory = "account"
+              window.activeSection = "settings"
             }
           }
         }
@@ -1542,9 +1371,9 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.left: sidebarReservedArea.right
-        anchors.topMargin: 10
-        anchors.bottomMargin: 10
-        anchors.leftMargin: window.chatListExpanded ? 10 : 0
+        anchors.topMargin: 6
+        anchors.bottomMargin: 6
+        anchors.leftMargin: window.chatListExpanded ? 6 : 0
         clip: true
 
         // Minimum width accommodates "Chats" header in its original size & position (pixelSize 22 + margins = 92px)
@@ -1596,7 +1425,7 @@ ApplicationWindow {
           anchors.fill: parent
           chatModel: chatListModel
           selectedChatId: window.selectedChatId
-          visible: window.activeSection !== "contacts"
+          visible: window.activeSection !== "contacts" && window.activeSection !== "settings"
 
           onPointerInsideChanged: {
             if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
@@ -1729,6 +1558,29 @@ ApplicationWindow {
           }
         }
 
+        SettingsCategoryBox {
+          id: settingsCategoryPane
+          anchors.fill: parent
+          visible: window.activeSection === "settings"
+          selectedCategory: window.activeSettingsCategory
+          selectedSection: window.activeSettingsSection
+
+          onCategorySelected: function(category) {
+            window.activeSettingsCategory = category
+          }
+
+          onSectionSelected: function(category, section) {
+            window.activeSettingsCategory = category
+            window.activeSettingsSection = section
+            settingsConfigPane.scrollToSection(section)
+          }
+
+          onPointerInsideChanged: {
+            if (!pointerInside && window.compactLayout && window.chatListExpanded && window.chatListAutoExpanded)
+              collapseChatListTimer.restart()
+          }
+        }
+
         // Draggable right edge splitter to resize chatbar (disabled when app width is <= 50% or dragging a chat)
         Item {
           id: chatListSplitter
@@ -1794,12 +1646,12 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.left: chatListReservedArea.right
         anchors.right: parent.right
-        anchors.topMargin: 10
-        anchors.bottomMargin: 10
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
+        anchors.topMargin: 6
+        anchors.bottomMargin: 6
+        anchors.leftMargin: 6
+        anchors.rightMargin: 6
 
-        readonly property real availablePanesWidth: width - (window.splitPaneActive ? 18 : 0)
+        readonly property real availablePanesWidth: width - (window.splitPaneActive ? 6 : 0)
 
         // Primary Conversation Pane
         Item {
@@ -1813,6 +1665,7 @@ ApplicationWindow {
 
           ConversationPanel {
             anchors.fill: parent
+            visible: window.activeSection !== "settings"
             chatId: window.selectedChatId || 0
             chatName: window.selectedChat.name || ""
             chatInitials: window.selectedChat.initials || "?"
@@ -1885,58 +1738,16 @@ ApplicationWindow {
               }
             }
           }
-        }
 
-        // Draggable Splitter Divider between Primary and Secondary Panes
-        Item {
-          id: paneSplitter
-          anchors.top: parent.top
-          anchors.bottom: parent.bottom
-          anchors.left: primaryPaneContainer.right
-          width: 18
-          visible: window.splitPaneActive
-          z: 35
-
-          Rectangle {
-            anchors.centerIn: parent
-            width: 3
-            height: 48
-            radius: 1.5
-            color: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? Theme.accent : Theme.divider
-            opacity: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? 1.0 : 0.45
-            Behavior on opacity { NumberAnimation { duration: 150 } }
-          }
-
-          MouseArea {
-            id: paneSplitterMouseArea
+          SettingsConfigurationBox {
+            id: settingsConfigPane
             anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.SplitHCursor
-            preventStealing: true
+            visible: window.activeSection === "settings"
+            activeCategory: window.activeSettingsCategory
+            activeSection: window.activeSettingsSection
 
-            property real startX: 0
-            property real initialPrimaryWidth: 0
-
-            onPressed: function(mouse) {
-              startX = mouse.x
-              initialPrimaryWidth = primaryPaneContainer.width
-              window.paneSplitterDragging = true
-            }
-
-            onPositionChanged: function(mouse) {
-              if (window.paneSplitterDragging) {
-                var delta = mouse.x - startX
-                var newW = Math.max(300, Math.min(conversationReservedArea.availablePanesWidth - 300, initialPrimaryWidth + delta))
-                window.primaryPaneRatio = newW / Math.max(1, conversationReservedArea.availablePanesWidth)
-              }
-            }
-
-            onReleased: {
-              window.paneSplitterDragging = false
-            }
-
-            onCanceled: {
-              window.paneSplitterDragging = false
+            onSectionScrolled: function(category, section) {
+              window.activeSettingsSection = section
             }
           }
         }
@@ -1946,9 +1757,64 @@ ApplicationWindow {
           id: secondaryPaneContainer
           anchors.top: parent.top
           anchors.bottom: parent.bottom
-          anchors.left: paneSplitter.right
+          anchors.left: primaryPaneContainer.right
+          anchors.leftMargin: 6
           anchors.right: parent.right
           visible: window.splitPaneActive
+
+          // Draggable Splitter handle placed along the inner left edge of the secondary split pane
+          Item {
+            id: paneSplitter
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            width: 8
+            z: 35
+
+            Rectangle {
+              anchors.centerIn: parent
+              width: 2
+              height: 48
+              radius: 1
+              color: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? Theme.accent : Theme.divider
+              opacity: paneSplitterMouseArea.containsMouse || window.paneSplitterDragging ? 1.0 : 0.35
+              Behavior on opacity { NumberAnimation { duration: 150 } }
+            }
+
+            MouseArea {
+              id: paneSplitterMouseArea
+              anchors.fill: parent
+              anchors.margins: -4
+              hoverEnabled: true
+              cursorShape: Qt.SplitHCursor
+              preventStealing: true
+
+              property real startX: 0
+              property real initialPrimaryWidth: 0
+
+              onPressed: function(mouse) {
+                startX = mouse.x
+                initialPrimaryWidth = primaryPaneContainer.width
+                window.paneSplitterDragging = true
+              }
+
+              onPositionChanged: function(mouse) {
+                if (window.paneSplitterDragging) {
+                  var delta = mouse.x - startX
+                  var newW = Math.max(300, Math.min(conversationReservedArea.availablePanesWidth - 300, initialPrimaryWidth + delta))
+                  window.primaryPaneRatio = newW / Math.max(1, conversationReservedArea.availablePanesWidth)
+                }
+              }
+
+              onReleased: {
+                window.paneSplitterDragging = false
+              }
+
+              onCanceled: {
+                window.paneSplitterDragging = false
+              }
+            }
+          }
 
           // Drop target for dragging and dropping chats from chat list
           DropArea {
@@ -1987,7 +1853,7 @@ ApplicationWindow {
             isSecondaryPane: true
 
             onClosePaneRequested: {
-              window.closeSecondaryPane()
+              window.resetSecondaryChat()
             }
 
             onSendMessageRequested: function(text, replyToMessageId, quoteText) {

@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QDateTime>
+#include <QSettings>
 
 AppController::AppController(QObject *parent)
     : QObject(parent), m_appName("Silkite"), m_appVersion("0.1.0"),
@@ -105,4 +106,24 @@ void AppController::clearClipboardCache() {
   if (dir.exists()) {
     dir.removeRecursively();
   }
+}
+
+qint64 AppController::savedSecondaryChatId() const {
+  QSettings settings;
+  return settings.value("secondaryChatId", 0).toLongLong();
+}
+
+void AppController::saveSecondaryChatId(qint64 chatId) {
+  QSettings settings;
+  settings.setValue("secondaryChatId", chatId);
+}
+
+bool AppController::savedSplitPaneActive() const {
+  QSettings settings;
+  return settings.value("splitPaneActive", false).toBool();
+}
+
+void AppController::saveSplitPaneActive(bool active) {
+  QSettings settings;
+  settings.setValue("splitPaneActive", active);
 }

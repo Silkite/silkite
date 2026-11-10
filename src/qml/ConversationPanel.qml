@@ -308,7 +308,7 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: messageComposer.top
-    anchors.bottomMargin: 8
+    anchors.bottomMargin: 6
     radius: 18
     color: Qt.rgba(Theme.panelBackground.r, Theme.panelBackground.g, Theme.panelBackground.b, 0.75)
     border.color: Theme.divider
@@ -333,7 +333,7 @@ Item {
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
-    height: root.hasConversation ? 56 : 0
+    height: root.hasConversation ? 52 : 0
     visible: root.hasConversation
     clip: false
 
@@ -341,7 +341,7 @@ Item {
       anchors.fill: parent
       anchors.leftMargin: 0
       anchors.rightMargin: 0
-      spacing: 10
+      spacing: 6
 
       // Left box: Contact info pill container
       Rectangle {
@@ -683,10 +683,10 @@ Item {
             }
           }
 
-          // Close pane button if this is secondary pane
+          // Return / Choose chat button if this is secondary pane
           ToolButton {
             visible: root.isSecondaryPane
-            icon.source: "qrc:/qt/qml/Silkite/assets/icons/close.svg"
+            icon.source: "qrc:/qt/qml/Silkite/assets/icons/arrow-undo.svg"
             icon.width: 18
             icon.height: 18
             icon.color: parent.hovered ? Theme.accentText : Theme.primaryText
@@ -694,7 +694,7 @@ Item {
             implicitWidth: 38
             implicitHeight: 38
             ToolTip.visible: hovered
-            ToolTip.text: "Close pane"
+            ToolTip.text: "Choose another chat"
             background: Rectangle {
               radius: 12
               color: parent.hovered ? Theme.accent : "transparent"
