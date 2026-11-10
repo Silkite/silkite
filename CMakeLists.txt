@@ -63,6 +63,7 @@ qt_add_qml_module(silkite
     src/qml/ContactList.qml
     src/qml/NewContactDialog.qml
     src/qml/ContactProfileDialog.qml
+    src/qml/UserProfileDialog.qml
     src/qml/ConversationPanel.qml
     src/qml/FolderBar.qml
     src/qml/NewFolderDialog.qml
@@ -99,6 +100,8 @@ qt_add_qml_module(silkite
     assets/icons/mute.svg
     assets/icons/unmute.svg
     assets/icons/leave.svg
+    assets/icons/camera.svg
+    assets/icons/edit.svg
     assets/fonts/Fredoka-Variable.ttf
     assets/fonts/Fredoka-OFL.txt
 )

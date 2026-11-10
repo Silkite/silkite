@@ -365,6 +365,13 @@ TelegramClient::TelegramClient(QObject *parent)
   connect(&m_worker, &TelegramWorker::chatDeleted, this, &TelegramClient::chatDeleted);
   connect(&m_worker, &TelegramWorker::localSearchResults, this, &TelegramClient::localSearchResults);
   connect(&m_worker, &TelegramWorker::globalSearchResults, this, &TelegramClient::globalSearchResults);
+  connect(&m_worker, &TelegramWorker::myUserUpdated, this, [this](const QVariantMap &profile) {
+    // Merge or replace profile details
+    for (auto it = profile.begin(); it != profile.end(); ++it) {
+      m_myProfile.insert(it.key(), it.value());
+    }
+    emit myProfileChanged();
+  });
 
   connect(&m_worker, &TelegramWorker::authenticationCodeLengthChanged, this,
           [this](int length) {
@@ -566,6 +573,22 @@ void TelegramClient::leaveChat(qint64 chatId) {
 
 void TelegramClient::toggleChatMute(qint64 chatId, bool mute) {
   m_worker.toggleChatMute(chatId, mute);
+}
+
+void TelegramClient::setProfilePhoto(const QString &filePath) {
+  m_worker.setProfilePhoto(filePath);
+}
+
+void TelegramClient::setName(const QString &firstName, const QString &lastName) {
+  m_worker.setName(firstName, lastName);
+}
+
+void TelegramClient::setBio(const QString &bio) {
+  m_worker.setBio(bio);
+}
+
+void TelegramClient::setUsername(const QString &username) {
+  m_worker.setUsername(username);
 }
 QVariantList TelegramClient::secondaryConversationMessages() const { return m_secondaryConversationMessages; }
 bool TelegramClient::secondaryTyping() const { return m_secondaryTyping; }

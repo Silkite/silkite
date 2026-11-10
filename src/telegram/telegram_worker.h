@@ -47,6 +47,12 @@ public:
   void leaveChat(qint64 chatId);
   void toggleChatMute(qint64 chatId, bool mute);
 
+  // Current user account profile management
+  void setProfilePhoto(const QString &filePath);
+  void setName(const QString &firstName, const QString &lastName);
+  void setBio(const QString &bio);
+  void setUsername(const QString &username);
+
   bool isAccountRestricted() const { return m_isAccountRestricted; }
   QString accountRestrictionError() const { return m_accountRestrictionError; }
 
@@ -86,6 +92,7 @@ signals:
   void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
   void chatDeleted(qint64 chatId);
+  void myUserUpdated(const QVariantMap &profile);
 
   // Search signals
   void localSearchResults(const QString &query, const QVariantList &results);
@@ -120,7 +127,11 @@ private:
     AddRecentlyFoundChat,
     JoinChat,
     LeaveChat,
-    ToggleChatMute
+    ToggleChatMute,
+    SetProfilePhoto,
+    SetName,
+    SetBio,
+    SetUsername
   };
   struct Command {
     CommandType type;

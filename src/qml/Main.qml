@@ -936,6 +936,14 @@ ApplicationWindow {
     id: contactProfileDialog
   }
 
+  UserProfileDialog {
+    id: userProfileDialog
+    onClosed: {
+      if (window.activeSection === "profile")
+        window.activeSection = "chats"
+    }
+  }
+
   function showContactProfile(profileData) {
     if (contactProfileDialog) {
       contactProfileDialog.openProfile(profileData)
@@ -1244,6 +1252,11 @@ ApplicationWindow {
         settingsPopup.open()
       else if (settingsPopup.opened)
         settingsPopup.close()
+
+      if (window.activeSection === "profile" && telegramClient.authorizationState === "ready")
+        userProfileDialog.openProfile()
+      else if (userProfileDialog.opened)
+        userProfileDialog.close()
     }
   }
 
@@ -1509,6 +1522,16 @@ ApplicationWindow {
               telegramClient.loadContacts()
             }
             console.log("Navigation:", page)
+          }
+
+          onProfileRequested: {
+            if (window.activeSection === "profile") {
+              userProfileDialog.close()
+              window.activeSection = "chats"
+            } else {
+              window.activeSection = "profile"
+              userProfileDialog.openProfile()
+            }
           }
         }
       }

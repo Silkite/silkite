@@ -764,6 +764,35 @@ void TelegramWorker::toggleChatMute(qint64 chatId, bool mute) {
   enqueue(std::move(cmd));
 }
 
+void TelegramWorker::setProfilePhoto(const QString &filePath) {
+  Command cmd;
+  cmd.type = CommandType::SetProfilePhoto;
+  cmd.value = filePath;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::setName(const QString &firstName, const QString &lastName) {
+  Command cmd;
+  cmd.type = CommandType::SetName;
+  cmd.value = firstName;
+  cmd.extra = lastName;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::setBio(const QString &bio) {
+  Command cmd;
+  cmd.type = CommandType::SetBio;
+  cmd.value = bio;
+  enqueue(std::move(cmd));
+}
+
+void TelegramWorker::setUsername(const QString &username) {
+  Command cmd;
+  cmd.type = CommandType::SetUsername;
+  cmd.value = username;
+  enqueue(std::move(cmd));
+}
+
 void TelegramWorker::enqueue(Command command) {
   QMutexLocker locker(&m_mutex);
   m_commands.enqueue(std::move(command));
@@ -1164,6 +1193,23 @@ void TelegramWorker::run() {
             settings->mute_for_ = command.flag ? 315360000 : 0;
             send(activeClientId, td::td_api::make_object<td::td_api::setChatNotificationSettings>(command.chatId, std::move(settings)));
           }
+        }
+        if (command.type == CommandType::SetProfilePhoto) {
+          const QString path = command.value.trimmed();
+          if (!path.isEmpty()) {
+            auto inputFile = td::td_api::make_object<td::td_api::inputFileLocal>(path.toStdString());
+            auto chatPhoto = td::td_api::make_object<td::td_api::inputChatPhotoStatic>(std::move(inputFile));
+            send(activeClientId, td::td_api::make_object<td::td_api::setProfilePhoto>(std::move(chatPhoto), false));
+          }
+        }
+        if (command.type == CommandType::SetName) {
+          send(activeClientId, td::td_api::make_object<td::td_api::setName>(command.value.toStdString(), command.extra.toStdString()));
+        }
+        if (command.type == CommandType::SetBio) {
+          send(activeClientId, td::td_api::make_object<td::td_api::setBio>(command.value.toStdString()));
+        }
+        if (command.type == CommandType::SetUsername) {
+          send(activeClientId, td::td_api::make_object<td::td_api::setUsername>(command.value.toStdString()));
         }
       }
     }
@@ -1602,6 +1648,13 @@ void TelegramWorker::run() {
           const qint64 uid = avatarFileUsers.value(fid);
           users[uid].avatarPath = localPath;
           emit contactAvatarUpdated(uid, localPath);
+          if (userFullProfiles.contains(uid)) {
+            userFullProfiles[uid]["avatarPath"] = localPath;
+            emit userProfileLoaded(uid, userFullProfiles[uid]);
+          }
+          if (myUserId != 0 && uid == myUserId) {
+            emit myUserUpdated(userFullProfiles[uid]);
+          }
         }
         if (profilePhotoFiles.contains(fid)) {
           const qint64 uid = profilePhotoFiles.value(fid);
@@ -1745,6 +1798,9 @@ void TelegramWorker::run() {
           userFullProfiles[uid]["isContact"] = u->user_->is_contact_;
           emit userProfileLoaded(uid, userFullProfiles[uid]);
         }
+        if (myUserId != 0 && uid == myUserId) {
+          emit myUserUpdated(userFullProfiles[uid]);
+        }
       }
       continue;
     }
@@ -1802,6 +1858,10 @@ void TelegramWorker::run() {
       userFullProfiles[uid]["avatarColor"] = cmap.value("avatarColor");
       userFullProfiles[uid]["isContact"] = u->is_contact_;
       emit userProfileLoaded(uid, userFullProfiles[uid]);
+
+      if (myUserId != 0 && uid == myUserId) {
+        emit myUserUpdated(userFullProfiles[uid]);
+      }
 
       if (u->is_contact_) {
         contactUserIds.insert(uid);
@@ -1973,6 +2033,9 @@ void TelegramWorker::run() {
 
         emit userProfileLoaded(uid, userFullProfiles[uid]);
         emit userBlockedStatusChanged(uid, isBlocked);
+        if (myUserId != 0 && uid == myUserId) {
+          emit myUserUpdated(userFullProfiles[uid]);
+        }
       }
       continue;
     }
@@ -2010,6 +2073,9 @@ void TelegramWorker::run() {
 
         emit userProfileLoaded(uid, userFullProfiles[uid]);
         emit userBlockedStatusChanged(uid, isBlocked);
+        if (myUserId != 0 && uid == myUserId) {
+          emit myUserUpdated(userFullProfiles[uid]);
+        }
       }
       continue;
     }

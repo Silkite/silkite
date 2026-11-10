@@ -25,6 +25,7 @@ class TelegramClient final : public QObject {
   Q_PROPERTY(bool secondaryTyping READ secondaryTyping NOTIFY secondaryTypingChanged)
   Q_PROPERTY(bool isAccountRestricted READ isAccountRestricted NOTIFY accountRestrictedChanged)
   Q_PROPERTY(QString accountRestrictionError READ accountRestrictionError NOTIFY accountRestrictedChanged)
+  Q_PROPERTY(QVariantMap myProfile READ myProfile NOTIFY myProfileChanged)
 
 public:
   explicit TelegramClient(QObject *parent = nullptr);
@@ -37,6 +38,7 @@ public:
   int authenticationCodeTimeout() const;
   bool isAccountRestricted() const { return m_isAccountRestricted; }
   QString accountRestrictionError() const { return m_accountRestrictionError; }
+  QVariantMap myProfile() const { return m_myProfile; }
   Q_INVOKABLE void start();
   Q_INVOKABLE void submitPhoneNumber(const QString &phoneNumber);
   Q_INVOKABLE void submitCode(const QString &code);
@@ -74,6 +76,12 @@ public:
   Q_INVOKABLE void joinChat(qint64 chatId);
   Q_INVOKABLE void leaveChat(qint64 chatId);
   Q_INVOKABLE void toggleChatMute(qint64 chatId, bool mute);
+
+  // My Profile actions
+  Q_INVOKABLE void setProfilePhoto(const QString &filePath);
+  Q_INVOKABLE void setName(const QString &firstName, const QString &lastName);
+  Q_INVOKABLE void setBio(const QString &bio);
+  Q_INVOKABLE void setUsername(const QString &username);
 
   QVariantList conversationMessages() const;
   MessageListModel *messageModel() { return &m_messageModel; }
@@ -117,6 +125,7 @@ signals:
   void userProfilePhotosLoaded(qint64 userId, const QVariantList &photos);
   void userBlockedStatusChanged(qint64 userId, bool isBlocked);
   void chatDeleted(qint64 chatId);
+  void myProfileChanged();
 
   // Search signals
   void localSearchResults(const QString &query, const QVariantList &results);
@@ -143,4 +152,5 @@ private:
   QHash<qint64, QString> m_chatTitles;
   bool m_isAccountRestricted = false;
   QString m_accountRestrictionError;
+  QVariantMap m_myProfile;
 };
