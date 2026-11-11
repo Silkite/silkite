@@ -19,6 +19,10 @@ class ThemeManager final : public QObject {
   Q_PROPERTY(QColor accent READ accent NOTIFY themeChanged)
   Q_PROPERTY(QColor accentText READ accentText NOTIFY themeChanged)
   Q_PROPERTY(QColor divider READ divider NOTIFY themeChanged)
+  Q_PROPERTY(bool ircMode READ ircMode WRITE setIrcMode NOTIFY ircModeChanged)
+  Q_PROPERTY(int uiFontSize READ uiFontSize WRITE setUiFontSize NOTIFY uiFontSizeChanged)
+  Q_PROPERTY(int chatFontSize READ chatFontSize WRITE setChatFontSize NOTIFY chatFontSizeChanged)
+  Q_PROPERTY(int chatSpacing READ chatSpacing WRITE setChatSpacing NOTIFY chatSpacingChanged)
 
 public:
   explicit ThemeManager(QObject *parent = nullptr);
@@ -35,11 +39,27 @@ public:
   QColor accentText() const;
   QColor divider() const;
 
+  bool ircMode() const { return m_ircMode; }
+  void setIrcMode(bool enabled);
+
+  int uiFontSize() const { return m_uiFontSize; }
+  void setUiFontSize(int size);
+
+  int chatFontSize() const { return m_chatFontSize; }
+  void setChatFontSize(int size);
+
+  int chatSpacing() const { return m_chatSpacing; }
+  void setChatSpacing(int spacing);
+
   Q_INVOKABLE void selectTheme(const QString &name);
   Q_INVOKABLE QString configFilePath() const;
 
 signals:
   void themeChanged();
+  void ircModeChanged();
+  void uiFontSizeChanged();
+  void chatFontSizeChanged();
+  void chatSpacingChanged();
 
 public:
   struct Palette {
@@ -64,4 +84,8 @@ public:
   QStringList m_availableThemes;
   QHash<QString, Palette> m_palettes;
   Palette m_currentPalette;
+  bool m_ircMode = false;
+  int m_uiFontSize = 13;
+  int m_chatFontSize = 15;
+  int m_chatSpacing = 6;
 };

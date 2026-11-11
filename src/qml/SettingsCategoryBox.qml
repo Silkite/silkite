@@ -67,7 +67,7 @@ Item {
 
       Label {
         text: "Settings"
-        font.pixelSize: 22
+        font.pixelSize: Theme.uiFontSize + 9
         font.bold: true
         color: Theme.primaryText
         visible: !root.compactMode
@@ -108,10 +108,10 @@ Item {
           name: "Appearance",
           icon: "qrc:/qt/qml/Silkite/assets/icons/paint-brush.svg",
           sections: [
-            { id: "theme_section", name: "Theme" },
-            { id: "app_zoom_section", name: "App zoom level" },
-            { id: "messages_style_section", name: "Messages" },
-            { id: "chat_font_section", name: "Chat font scaling" }
+            { id: "themes_section", name: "Themes" },
+            { id: "irc_mode_section", name: "IRC Mode" },
+            { id: "font_sizes_section", name: "Font Sizes" },
+            { id: "chat_spacing_section", name: "Chat Spacing" }
           ]
         },
         {
@@ -231,7 +231,7 @@ Item {
             Label {
               text: catData.name
               color: isSelected ? Theme.accent : Theme.primaryText
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               font.weight: isSelected ? Font.DemiBold : Font.Normal
               visible: !root.compactMode
               Layout.fillWidth: true
@@ -356,7 +356,7 @@ Item {
                   anchors.rightMargin: 8
                   text: modelData.name
                   color: isSecActive ? Theme.primaryText : Theme.secondaryText
-                  font.pixelSize: 12
+                  font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
                   font.weight: isSecActive ? Font.DemiBold : Font.Normal
                   verticalAlignment: Text.AlignVCenter
                   elide: Text.ElideRight

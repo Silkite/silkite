@@ -122,7 +122,7 @@ Popup {
           placeholderText: "Search chats, contacts, channels, @username..."
           placeholderTextColor: Theme.secondaryText
           color: Theme.primaryText
-          font.pixelSize: 15
+          font.pixelSize: Theme.uiFontSize + 2
           selectByMouse: true
           focus: true
           background: Item {}
@@ -380,7 +380,7 @@ Popup {
                 Label {
                   text: model.name ? model.name : ""
                   color: Theme.primaryText
-                  font.pixelSize: 14
+                  font.pixelSize: Theme.uiFontSize + 1
                   font.bold: true
                   elide: Text.ElideRight
                   Layout.fillWidth: true
@@ -406,7 +406,7 @@ Popup {
                     text: model.type === "channel" ? "channel"
                           : (model.type === "bot" ? "bot"
                           : (model.type === "group" ? "group" : model.type))
-                    font.pixelSize: 10
+                    font.pixelSize: Math.max(8, Theme.uiFontSize - 3)
                     font.weight: Font.Medium
                     color: model.type === "channel" ? "#29B6F6"
                            : (model.type === "bot" ? "#FFA726" : "#66BB6A")
@@ -422,7 +422,7 @@ Popup {
                   visible: model.username && model.username !== ""
                   text: "@" + model.username
                   color: Theme.accent
-                  font.pixelSize: 12
+                  font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
                   elide: Text.ElideRight
                 }
 
@@ -430,7 +430,7 @@ Popup {
                   Layout.fillWidth: true
                   text: model.subtitle ? model.subtitle : ""
                   color: Theme.secondaryText
-                  font.pixelSize: 12
+                  font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
                   elide: Text.ElideRight
                 }
               }

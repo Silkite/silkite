@@ -79,7 +79,7 @@ Item {
           Label {
             visible: !root.compactMode
             text: "New Folder"
-            font.pixelSize: 12
+            font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
             font.bold: true
             color: Theme.primaryText
           }
@@ -172,7 +172,7 @@ Item {
             Label {
               visible: !root.compactMode
               text: folderDelegate.name
-              font.pixelSize: 12
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
               font.bold: folderDelegate.isActive
               color: folderDelegate.isActive ? Theme.accentText : Theme.primaryText
             }
@@ -191,7 +191,7 @@ Item {
                 id: countLabel
                 anchors.centerIn: parent
                 text: folderDelegate.chatCount.toString()
-                font.pixelSize: 9
+                font.pixelSize: Math.max(8, Theme.uiFontSize - 4)
                 font.bold: true
                 color: folderDelegate.isActive ? Theme.accentText : Theme.accent
               }
@@ -263,7 +263,7 @@ Item {
       contentItem: Text {
         text: parent.text
         color: Theme.accentText
-        font.pixelSize: 13
+        font.pixelSize: Theme.uiFontSize
         verticalAlignment: Text.AlignVCenter
         leftPadding: 12
         rightPadding: 12

@@ -67,6 +67,7 @@ ApplicationWindow {
 
   title: appController.appName
   font.family: fredokaFont.name
+  font.pixelSize: Theme.uiFontSize
 
   color: Theme.windowBackground
 

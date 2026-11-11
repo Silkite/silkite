@@ -801,9 +801,24 @@ Item {
         delegate: Item {
           id: msgDelegate
           required property var modelData
+          required property int index
           readonly property var mData: modelData || ({})
           width: messageListView.width
-          height: bubble.height + (reactionsRow.visible ? (reactionsRow.height + 4) : 0) + 6
+
+          readonly property bool isGroupStart: {
+            if (index === 0) return true
+            var prevMsg = null
+            if (root.messageModel && typeof root.messageModel.get === "function") {
+              prevMsg = root.messageModel.get(index - 1)
+            } else if (root.messages && index - 1 < root.messages.length) {
+              prevMsg = root.messages[index - 1]
+            }
+            if (!prevMsg) return true
+            return Boolean(prevMsg.outgoing) !== Boolean(mData.outgoing)
+          }
+
+          readonly property real topGroupGap: (index > 0 && isGroupStart) ? Math.max(0, Theme.chatSpacing - 3) : 0
+          height: bubble.height + (reactionsRow.visible ? (reactionsRow.height + 4) : 0) + 6 + topGroupGap
 
           readonly property bool isOutgoing: Boolean(mData.outgoing)
           readonly property bool hasReply: (mData.replyToMessageId && mData.replyToMessageId > 0) || (mData.replyText !== undefined && mData.replyText !== "")
@@ -957,6 +972,7 @@ Item {
           Rectangle {
             id: bubble
             z: 10
+            y: msgDelegate.topGroupGap
             anchors.right: msgDelegate.isOutgoing ? parent.right : undefined
             anchors.left: msgDelegate.isOutgoing ? undefined : parent.left
             anchors.rightMargin: msgDelegate.isOutgoing ? 18 : 0
@@ -971,7 +987,7 @@ Item {
             height: isBorderlessMedia
               ? targetMediaHeight
               : (fitsSingleLine
-                  ? 36
+                  ? Math.max(36, Theme.chatFontSize + 21)
                   : (bubbleCol.implicitHeight + (isVisualMedia ? 0 : 14)))
 
             // Modern capsule corners: 18px radius with subtle corner anchor
@@ -1019,7 +1035,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: msgDelegate.mData.text || ""
                 color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
-                font.pixelSize: 15
+                font.pixelSize: Theme.chatFontSize
                 elide: Text.ElideNone
               }
 
@@ -1032,13 +1048,13 @@ Item {
                 Label {
                   text: msgDelegate.mData.time || ""
                   color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
-                  font.pixelSize: 11
+                  font.pixelSize: Math.max(9, Theme.chatFontSize - 4)
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "" && msgDelegate.mData.status !== "!") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
-                  font.pixelSize: 11
+                  font.pixelSize: Math.max(9, Theme.chatFontSize - 4)
                   visible: text.length > 0
                 }
 
@@ -1747,7 +1763,7 @@ Item {
                 text: msgDelegate.mData.caption ? msgDelegate.mData.caption : (msgDelegate.mData.text || "")
                 color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.chatFontSize
                 lineHeight: 1.15
               }
 
@@ -1761,13 +1777,13 @@ Item {
                   id: metaTimeLabel
                   text: msgDelegate.mData.time || ""
                   color: msgDelegate.isOutgoing ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
-                  font.pixelSize: 11
+                  font.pixelSize: Math.max(9, Theme.chatFontSize - 4)
                 }
 
                 Label {
                   text: (msgDelegate.isOutgoing && msgDelegate.mData.status !== "" && msgDelegate.mData.status !== "!") ? msgDelegate.mData.status : ""
                   color: msgDelegate.isOutgoing ? Theme.accentText : Theme.primaryText
-                  font.pixelSize: 11
+                  font.pixelSize: Math.max(9, Theme.chatFontSize - 4)
                   visible: text.length > 0
                 }
 
@@ -2585,6 +2601,7 @@ Item {
           Layout.minimumWidth: 140
           Layout.preferredHeight: Math.max(42, Math.min(140, implicitHeight))
           Layout.maximumHeight: 140
+          font.pixelSize: Theme.chatFontSize
 
           readOnly: false
           placeholderText: "Write a message..."

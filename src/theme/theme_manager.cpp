@@ -52,6 +52,10 @@ void ThemeManager::load() {
     for (const auto &name : m_availableThemes)
       if (themes.contains(name)) m_palettes[name] = paletteFromJson(themes.value(name).toObject());
     m_currentTheme = m_palettes.contains(selected) ? selected : "Silicone";
+    if (root.contains("ircMode")) m_ircMode = root.value("ircMode").toBool();
+    if (root.contains("uiFontSize")) m_uiFontSize = root.value("uiFontSize").toInt(13);
+    if (root.contains("chatFontSize")) m_chatFontSize = root.value("chatFontSize").toInt(15);
+    if (root.contains("chatSpacing")) m_chatSpacing = root.value("chatSpacing").toInt(6);
   } else {
     m_currentTheme = "Silicone";
   }
@@ -68,6 +72,10 @@ void ThemeManager::save() const {
   QJsonObject root;
   root.insert("selected", m_currentTheme);
   root.insert("themes", themes);
+  root.insert("ircMode", m_ircMode);
+  root.insert("uiFontSize", m_uiFontSize);
+  root.insert("chatFontSize", m_chatFontSize);
+  root.insert("chatSpacing", m_chatSpacing);
   QFile file(path);
   if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
@@ -92,4 +100,32 @@ void ThemeManager::selectTheme(const QString &name) {
   m_currentPalette = m_palettes.value(name);
   save();
   emit themeChanged();
+}
+
+void ThemeManager::setIrcMode(bool enabled) {
+  if (m_ircMode == enabled) return;
+  m_ircMode = enabled;
+  save();
+  emit ircModeChanged();
+}
+
+void ThemeManager::setUiFontSize(int size) {
+  if (m_uiFontSize == size) return;
+  m_uiFontSize = size;
+  save();
+  emit uiFontSizeChanged();
+}
+
+void ThemeManager::setChatFontSize(int size) {
+  if (m_chatFontSize == size) return;
+  m_chatFontSize = size;
+  save();
+  emit chatFontSizeChanged();
+}
+
+void ThemeManager::setChatSpacing(int spacing) {
+  if (m_chatSpacing == spacing) return;
+  m_chatSpacing = spacing;
+  save();
+  emit chatSpacingChanged();
 }

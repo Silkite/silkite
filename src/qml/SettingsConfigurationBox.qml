@@ -60,10 +60,10 @@ Item {
     if (sectionId === "profile_card") target = sec_profile_card
     else if (sectionId === "edit_details") target = sec_edit_details
     else if (sectionId === "account_actions") target = sec_account_actions
-    else if (sectionId === "theme_section") target = sec_theme_section
-    else if (sectionId === "app_zoom_section") target = sec_app_zoom_section
-    else if (sectionId === "messages_style_section") target = sec_messages_style_section
-    else if (sectionId === "chat_font_section") target = sec_chat_font_section
+    else if (sectionId === "themes_section" || sectionId === "theme_section") target = sec_themes_section
+    else if (sectionId === "irc_mode_section") target = sec_irc_mode_section
+    else if (sectionId === "font_sizes_section" || sectionId === "chat_font_section") target = sec_font_sizes_section
+    else if (sectionId === "chat_spacing_section") target = sec_chat_spacing_section
     else if (sectionId === "two_step_section") target = sec_two_step_section
     else if (sectionId === "sessions_section") target = sec_sessions_section
     else if (sectionId === "visibility_section") target = sec_visibility_section
@@ -113,10 +113,10 @@ Item {
       ]
     } else if (activeCategory === "appearance") {
       sectionsToCheck = [
-        { id: "theme_section", item: sec_theme_section },
-        { id: "app_zoom_section", item: sec_app_zoom_section },
-        { id: "messages_style_section", item: sec_messages_style_section },
-        { id: "chat_font_section", item: sec_chat_font_section }
+        { id: "themes_section", item: sec_themes_section },
+        { id: "irc_mode_section", item: sec_irc_mode_section },
+        { id: "font_sizes_section", item: sec_font_sizes_section },
+        { id: "chat_spacing_section", item: sec_chat_spacing_section }
       ]
     } else if (activeCategory === "privacy") {
       sectionsToCheck = [
@@ -259,7 +259,7 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 20
+        spacing: 28
         visible: root.activeCategory === "account"
 
         // Section Title
@@ -267,7 +267,7 @@ Item {
           Layout.fillWidth: true
           Label {
             text: "Account & Profile"
-            font.pixelSize: 22
+            font.pixelSize: Theme.uiFontSize + 9
             font.bold: true
             color: Theme.primaryText
             Layout.fillWidth: true
@@ -285,7 +285,7 @@ Item {
               text: parent.text
               color: Theme.accent
               font.bold: true
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               horizontalAlignment: Text.AlignHCenter
               verticalAlignment: Text.AlignVCenter
             }
@@ -309,7 +309,7 @@ Item {
               text: parent.text
               color: Theme.accentText
               font.bold: true
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               horizontalAlignment: Text.AlignHCenter
               verticalAlignment: Text.AlignVCenter
             }
@@ -414,13 +414,13 @@ Item {
 
               Label {
                 text: root.phoneNumber !== "" ? root.phoneNumber : "No Phone Number"
-                font.pixelSize: 13
+                font.pixelSize: Theme.uiFontSize
                 color: Theme.secondaryText
               }
 
               Label {
                 text: root.username !== "" ? ("@" + root.username) : "No Username"
-                font.pixelSize: 13
+                font.pixelSize: Theme.uiFontSize
                 color: Theme.accent
               }
             }
@@ -441,7 +441,7 @@ Item {
 
             Label {
               text: "Edit Information"
-              font.pixelSize: 14
+              font.pixelSize: Theme.uiFontSize + 1
               font.bold: true
               color: Theme.secondaryText
             }
@@ -517,24 +517,24 @@ Item {
 
               ColumnLayout {
                 spacing: 2
-                Label { text: "Phone Number"; font.pixelSize: 11; color: Theme.secondaryText }
-                Label { text: root.phoneNumber !== "" ? root.phoneNumber : "None"; font.pixelSize: 14; color: Theme.primaryText }
+                Label { text: "Phone Number"; font.pixelSize: Math.max(9, Theme.uiFontSize - 2); color: Theme.secondaryText }
+                Label { text: root.phoneNumber !== "" ? root.phoneNumber : "None"; font.pixelSize: Theme.uiFontSize + 1; color: Theme.primaryText }
               }
 
               Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
 
               ColumnLayout {
                 spacing: 2
-                Label { text: "Username"; font.pixelSize: 11; color: Theme.secondaryText }
-                Label { text: root.username !== "" ? ("@" + root.username) : "None"; font.pixelSize: 14; color: Theme.primaryText }
+                Label { text: "Username"; font.pixelSize: Math.max(9, Theme.uiFontSize - 2); color: Theme.secondaryText }
+                Label { text: root.username !== "" ? ("@" + root.username) : "None"; font.pixelSize: Theme.uiFontSize + 1; color: Theme.primaryText }
               }
 
               Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
 
               ColumnLayout {
                 spacing: 2
-                Label { text: "Bio"; font.pixelSize: 11; color: Theme.secondaryText }
-                Label { text: root.bio !== "" ? root.bio : "None"; font.pixelSize: 14; color: Theme.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                Label { text: "Bio"; font.pixelSize: Math.max(9, Theme.uiFontSize - 2); color: Theme.secondaryText }
+                Label { text: root.bio !== "" ? root.bio : "None"; font.pixelSize: Theme.uiFontSize + 1; color: Theme.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
               }
             }
           }
@@ -559,7 +559,7 @@ Item {
               text: "Log Out"
               color: "white"
               font.bold: true
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               horizontalAlignment: Text.AlignHCenter
               verticalAlignment: Text.AlignVCenter
             }
@@ -577,19 +577,19 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "appearance"
 
         Label {
           text: "Appearance"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
 
-        // Sub-section 1: Theme
+        // Sub-section 1: Themes
         Rectangle {
-          id: sec_theme_section
+          id: sec_themes_section
           Layout.fillWidth: true
           implicitHeight: appearanceCol.implicitHeight + 24
           radius: 16
@@ -604,8 +604,8 @@ Item {
             spacing: 14
 
             Label {
-              text: "Theme Palette"
-              font.pixelSize: 15
+              text: "Themes"
+              font.pixelSize: Theme.uiFontSize + 2
               font.bold: true
               color: Theme.primaryText
             }
@@ -623,7 +623,7 @@ Item {
                 text: themeSelector.displayText
                 color: Theme.primaryText
                 verticalAlignment: Text.AlignVCenter
-                font.pixelSize: 14
+                font.pixelSize: Theme.uiFontSize + 1
               }
 
               background: Rectangle {
@@ -637,132 +637,162 @@ Item {
             Label {
               text: "Silkite theme configuration is stored at " + Theme.configFilePath()
               color: Theme.secondaryText
-              font.pixelSize: 12
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
               wrapMode: Text.WordWrap
               Layout.fillWidth: true
             }
           }
         }
 
-        // Sub-section 2: App zoom level
+        // Sub-section 2: IRC Mode
         Rectangle {
-          id: sec_app_zoom_section
+          id: sec_irc_mode_section
           Layout.fillWidth: true
-          implicitHeight: zoomCol.implicitHeight + 24
+          implicitHeight: ircCol.implicitHeight + 24
           radius: 16
           color: Theme.controlBackground
           border.color: Theme.divider
           border.width: 1
 
           ColumnLayout {
-            id: zoomCol
+            id: ircCol
             anchors.fill: parent
             anchors.margins: 16
             spacing: 12
-
-            RowLayout {
-              Layout.fillWidth: true
-              Label { text: "App Zoom Level"; font.pixelSize: 15; font.bold: true; color: Theme.primaryText }
-              Item { Layout.fillWidth: true }
-              Label { text: Math.round(zoomSlider.value) + "%"; font.bold: true; color: Theme.accent }
-            }
-
-            Slider {
-              id: zoomSlider
-              Layout.fillWidth: true
-              from: 80
-              to: 150
-              value: 100
-              stepSize: 5
-            }
-
-            Label {
-              text: "Adjust overall user interface scale for high-DPI displays"
-              font.pixelSize: 12
-              color: Theme.secondaryText
-            }
-          }
-        }
-
-        // Sub-section 3: Messages style
-        Rectangle {
-          id: sec_messages_style_section
-          Layout.fillWidth: true
-          implicitHeight: messagesCol.implicitHeight + 24
-          radius: 16
-          color: Theme.controlBackground
-          border.color: Theme.divider
-          border.width: 1
-
-          ColumnLayout {
-            id: messagesCol
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-
-            Label { text: "Messages View"; font.pixelSize: 15; font.bold: true; color: Theme.primaryText }
 
             RowLayout {
               Layout.fillWidth: true
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Bubble Corners"; font.pixelSize: 13; font.bold: true; color: Theme.primaryText }
-                Label { text: "Use rounded bubble style for conversation messages"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "IRC Mode"; font.pixelSize: Theme.uiFontSize + 2; font.bold: true; color: Theme.primaryText }
+                Label { text: "Classic compact text-oriented layout inspired by IRC clients"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
-              Switch { checked: true }
+              Switch {
+                id: ircModeSwitch
+                checked: Theme.ircMode
+                onToggled: Theme.ircMode = checked
+              }
+            }
+          }
+        }
+
+        // Sub-section 3: Font Sizes (UI font , Chat Font)
+        Rectangle {
+          id: sec_font_sizes_section
+          Layout.fillWidth: true
+          implicitHeight: fontSizesCol.implicitHeight + 24
+          radius: 16
+          color: Theme.controlBackground
+          border.color: Theme.divider
+          border.width: 1
+
+          ColumnLayout {
+            id: fontSizesCol
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 14
+
+            Label { text: "Font Sizes"; font.pixelSize: Theme.uiFontSize + 2; font.bold: true; color: Theme.primaryText }
+
+            // UI Font Size
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 6
+
+              RowLayout {
+                Layout.fillWidth: true
+                Label { text: "UI Font Size"; font.pixelSize: Theme.uiFontSize; font.bold: true; color: Theme.primaryText }
+                Item { Layout.fillWidth: true }
+                Label { text: Math.round(uiFontSlider.value) + " px"; font.bold: true; color: Theme.accent }
+              }
+
+              Slider {
+                id: uiFontSlider
+                Layout.fillWidth: true
+                from: 10
+                to: 20
+                value: Theme.uiFontSize
+                stepSize: 1
+                onMoved: Theme.uiFontSize = Math.round(value)
+              }
+
+              Label {
+                text: "Adjusts UI font size for controls and headers inside the chatbox"
+                font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
+                color: Theme.secondaryText
+              }
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
 
-            RowLayout {
+            // Chat Font Size
+            ColumnLayout {
               Layout.fillWidth: true
-              ColumnLayout {
+              spacing: 6
+
+              RowLayout {
                 Layout.fillWidth: true
-                spacing: 2
-                Label { text: "Liquid Glass Tint"; font.pixelSize: 13; font.bold: true; color: Theme.primaryText }
-                Label { text: "Enable translucent glass backdrop across panes"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Chat Font Size"; font.pixelSize: Theme.uiFontSize; font.bold: true; color: Theme.primaryText }
+                Item { Layout.fillWidth: true }
+                Label { text: Math.round(chatFontSlider.value) + " px"; font.bold: true; color: Theme.accent }
               }
-              Switch { checked: true }
+
+              Slider {
+                id: chatFontSlider
+                Layout.fillWidth: true
+                from: 11
+                to: 24
+                value: Theme.chatFontSize
+                stepSize: 1
+                onMoved: Theme.chatFontSize = Math.round(value)
+              }
+
+              Label {
+                text: "Adjusts text size for message content inside the chatbox"
+                font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
+                color: Theme.secondaryText
+              }
             }
           }
         }
 
-        // Sub-section 4: Chat font scaling
+        // Sub-section 4: Chat Spacing
         Rectangle {
-          id: sec_chat_font_section
+          id: sec_chat_spacing_section
           Layout.fillWidth: true
-          implicitHeight: fontCol.implicitHeight + 24
+          implicitHeight: chatSpacingCol.implicitHeight + 24
           radius: 16
           color: Theme.controlBackground
           border.color: Theme.divider
           border.width: 1
 
           ColumnLayout {
-            id: fontCol
+            id: chatSpacingCol
             anchors.fill: parent
             anchors.margins: 16
             spacing: 12
 
             RowLayout {
               Layout.fillWidth: true
-              Label { text: "Chat Font Scaling"; font.pixelSize: 15; font.bold: true; color: Theme.primaryText }
+              Label { text: "Chat Spacing"; font.pixelSize: Theme.uiFontSize + 2; font.bold: true; color: Theme.primaryText }
               Item { Layout.fillWidth: true }
-              Label { text: Math.round(fontSlider.value) + " pt"; font.bold: true; color: Theme.accent }
+              Label { text: Math.round(chatSpacingSlider.value) + " px"; font.bold: true; color: Theme.accent }
             }
 
             Slider {
-              id: fontSlider
+              id: chatSpacingSlider
               Layout.fillWidth: true
-              from: 11
-              to: 20
-              value: 14
+              from: 2
+              to: 28
+              value: Theme.chatSpacing
               stepSize: 1
+              onMoved: Theme.chatSpacing = Math.round(value)
             }
 
             Label {
-              text: "Adjust text readability for incoming and outgoing chat messages"
-              font.pixelSize: 12
+              text: "Increases the gaps between message groups in the chatbox"
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
               color: Theme.secondaryText
             }
           }
@@ -774,12 +804,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "privacy"
 
         Label {
           text: "Privacy & Security"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -805,8 +835,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Two-Step Verification"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Add an extra layer of security with a cloud password"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Two-Step Verification"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Add an extra layer of security with a cloud password"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: true; enabled: false }
             }
@@ -834,10 +864,10 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Active Sessions & Devices"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Control logged in applications and web sessions"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Active Sessions & Devices"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Control logged in applications and web sessions"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
-              Label { text: "1 Active"; color: Theme.accent; font.pixelSize: 13 }
+              Label { text: "1 Active"; color: Theme.accent; font.pixelSize: Theme.uiFontSize }
             }
           }
         }
@@ -863,10 +893,10 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Phone Number Visibility"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Choose who can see your phone number"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Phone Number Visibility"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Choose who can see your phone number"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
-              Label { text: "My Contacts"; color: Theme.secondaryText; font.pixelSize: 13 }
+              Label { text: "My Contacts"; color: Theme.secondaryText; font.pixelSize: Theme.uiFontSize }
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
@@ -876,10 +906,10 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Last Seen & Online"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Choose who can see your last seen time"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Last Seen & Online"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Choose who can see your last seen time"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
-              Label { text: "Everybody"; color: Theme.secondaryText; font.pixelSize: 13 }
+              Label { text: "Everybody"; color: Theme.secondaryText; font.pixelSize: Theme.uiFontSize }
             }
           }
         }
@@ -890,12 +920,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "notifications"
 
         Label {
           text: "Notifications & Sounds"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -921,8 +951,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Private Chats"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Show notifications for private messages"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Private Chats"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Show notifications for private messages"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: true }
             }
@@ -934,8 +964,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Groups"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Show notifications for group chats"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Groups"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Show notifications for group chats"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: true }
             }
@@ -947,8 +977,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Channels"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Show notifications for subscribed channels"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Channels"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Show notifications for subscribed channels"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: false }
             }
@@ -976,8 +1006,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "In-App Sounds"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Play sound on new messages"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "In-App Sounds"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Play sound on new messages"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: true }
             }
@@ -990,12 +1020,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "data_storage"
 
         Label {
           text: "Data & Storage"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -1021,8 +1051,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Automatic Media Download"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Download photos and documents automatically"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Automatic Media Download"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Download photos and documents automatically"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Switch { checked: true }
             }
@@ -1050,8 +1080,8 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Cache Storage"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Keep cached files to save network data"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Cache Storage"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Keep cached files to save network data"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
               Button {
                 text: "Clear Cache"
@@ -1064,7 +1094,7 @@ Item {
                   text: parent.text
                   color: Theme.accent
                   font.bold: true
-                  font.pixelSize: 12
+                  font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
                   horizontalAlignment: Text.AlignHCenter
                   verticalAlignment: Text.AlignVCenter
                 }
@@ -1079,12 +1109,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "chat_folders"
 
         Label {
           text: "Chat Folders"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -1108,7 +1138,7 @@ Item {
             Label {
               text: "Organize your conversations by creating custom chat folders."
               color: Theme.secondaryText
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               wrapMode: Text.WordWrap
               Layout.fillWidth: true
             }
@@ -1142,7 +1172,7 @@ Item {
                 text: parent.text
                 color: Theme.accentText
                 font.bold: true
-                font.pixelSize: 13
+                font.pixelSize: Theme.uiFontSize
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
               }
@@ -1161,12 +1191,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "language"
 
         Label {
           text: "Language"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -1192,10 +1222,10 @@ Item {
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { text: "Interface Language"; font.pixelSize: 14; font.bold: true; color: Theme.primaryText }
-                Label { text: "Silkite interface language"; font.pixelSize: 12; color: Theme.secondaryText }
+                Label { text: "Interface Language"; font.pixelSize: Theme.uiFontSize + 1; font.bold: true; color: Theme.primaryText }
+                Label { text: "Silkite interface language"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
               }
-              Label { text: "English (US)"; color: Theme.accent; font.pixelSize: 13; font.bold: true }
+              Label { text: "English (US)"; color: Theme.accent; font.pixelSize: Theme.uiFontSize; font.bold: true }
             }
           }
         }
@@ -1206,12 +1236,12 @@ Item {
       // ==========================================
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 16
+        spacing: 28
         visible: root.activeCategory === "about"
 
         Label {
           text: "About Silkite"
-          font.pixelSize: 22
+          font.pixelSize: Theme.uiFontSize + 9
           font.bold: true
           color: Theme.primaryText
         }
@@ -1242,8 +1272,8 @@ Item {
               ColumnLayout {
                 spacing: 2
                 Label { text: "Silkite Telegram Client"; font.pixelSize: 16; font.bold: true; color: Theme.primaryText }
-                Label { text: "Fast, elegant Telegram desktop client built with Qt Quick & TDLib"; font.pixelSize: 12; color: Theme.secondaryText }
-                Label { text: "Version 0.1.0"; font.pixelSize: 12; color: Theme.accent }
+                Label { text: "Fast, elegant Telegram desktop client built with Qt Quick & TDLib"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.secondaryText }
+                Label { text: "Version 0.1.0"; font.pixelSize: Math.max(9, Theme.uiFontSize - 1); color: Theme.accent }
               }
             }
           }
@@ -1268,7 +1298,7 @@ Item {
             Label {
               text: "Powered by TDLib (Telegram Database Library) and Qt 6."
               color: Theme.secondaryText
-              font.pixelSize: 12
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
             }
           }
         }

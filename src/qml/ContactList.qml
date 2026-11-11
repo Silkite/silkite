@@ -140,7 +140,7 @@ Item {
               id: contactsHeaderLabel
               text: "Contacts"
               color: Theme.primaryText
-              font.pixelSize: 22
+              font.pixelSize: Theme.uiFontSize + 9
               font.bold: true
               Layout.fillWidth: true
               elide: Text.ElideRight
@@ -248,7 +248,7 @@ Item {
             Label {
               text: "New Group"
               color: Theme.primaryText
-              font.pixelSize: 17
+              font.pixelSize: Theme.uiFontSize + 4
               font.bold: true
               Layout.fillWidth: true
               elide: Text.ElideRight
@@ -257,7 +257,7 @@ Item {
             Label {
               text: root.selectedGroupMemberIds.length > 0 ? (root.selectedGroupMemberIds.length + " selected") : ""
               color: Theme.secondaryText
-              font.pixelSize: 12
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
             }
           }
 
@@ -268,7 +268,7 @@ Item {
             Layout.preferredHeight: 34
             placeholderText: "Group name..."
             color: Theme.primaryText
-            font.pixelSize: 13
+            font.pixelSize: Theme.uiFontSize
             leftPadding: 10
             rightPadding: 10
             selectByMouse: true
@@ -318,7 +318,7 @@ Item {
             Layout.fillHeight: true
             placeholderText: "Search contacts..."
             color: Theme.primaryText
-            font.pixelSize: 13
+            font.pixelSize: Theme.uiFontSize
             background: Item {}
             padding: 0
             verticalAlignment: Text.AlignVCenter
@@ -520,7 +520,7 @@ Item {
                 Label {
                   text: contactDelegate.cName
                   color: Theme.primaryText
-                  font.pixelSize: 14
+                  font.pixelSize: Theme.uiFontSize + 1
                   font.bold: true
                   Layout.fillWidth: true
                   elide: Text.ElideRight
@@ -529,7 +529,7 @@ Item {
                 Label {
                   text: contactDelegate.cStatusText || (contactDelegate.cIsOnline ? "online" : "offline")
                   color: contactDelegate.cIsOnline ? Theme.accent : Theme.secondaryText
-                  font.pixelSize: 12
+                  font.pixelSize: Math.max(9, Theme.uiFontSize - 1)
                   Layout.fillWidth: true
                   elide: Text.ElideRight
                 }
@@ -649,14 +649,14 @@ Item {
               Layout.alignment: Qt.AlignHCenter
               text: "No new contacts"
               color: Theme.secondaryText
-              font.pixelSize: 14
+              font.pixelSize: Theme.uiFontSize + 1
             }
 
             Label {
               Layout.alignment: Qt.AlignHCenter
               text: "All synced contacts have existing chats"
               color: Qt.rgba(Theme.secondaryText.r, Theme.secondaryText.g, Theme.secondaryText.b, 0.6)
-              font.pixelSize: 11
+              font.pixelSize: Math.max(9, Theme.uiFontSize - 2)
             }
           }
         }
@@ -683,7 +683,7 @@ Item {
             Layout.fillWidth: true
             text: root.groupCreationError
             color: "#ff6b6b"
-            font.pixelSize: 11
+            font.pixelSize: Math.max(9, Theme.uiFontSize - 2)
             wrapMode: Text.Wrap
           }
         }
@@ -714,7 +714,7 @@ Item {
           contentItem: Label {
             text: parent.text
             color: parent.enabled ? Theme.accentText : Theme.secondaryText
-            font.pixelSize: 14
+            font.pixelSize: Theme.uiFontSize + 1
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter

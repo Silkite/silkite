@@ -87,7 +87,7 @@ Item {
       Label {
         id: chatsHeaderLabel
         text: "Chats"
-        font.pixelSize: 22
+        font.pixelSize: Theme.uiFontSize + 9
         font.bold: true
         color: Theme.primaryText
         Layout.alignment: Qt.AlignVCenter
@@ -296,7 +296,7 @@ Item {
                 text: chatDelegate.name
                 color: chatDelegate.isSelected ? Theme.accentText : Theme.primaryText
                 font.bold: true
-                font.pixelSize: 14
+                font.pixelSize: Theme.uiFontSize + 1
                 elide: Text.ElideRight
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
@@ -306,7 +306,7 @@ Item {
               Label {
                 text: chatDelegate.time
                 color: chatDelegate.isSelected ? Qt.rgba(Theme.accentText.r, Theme.accentText.g, Theme.accentText.b, 0.75) : Theme.secondaryText
-                font.pixelSize: 11
+                font.pixelSize: Math.max(9, Theme.uiFontSize - 2)
               }
             }
 
@@ -321,7 +321,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 maximumLineCount: 1
-                font.pixelSize: 13
+                font.pixelSize: Theme.uiFontSize
               }
 
               Rectangle {
@@ -339,7 +339,7 @@ Item {
                   anchors.centerIn: parent
                   text: chatDelegate.unreadCount.toString()
                   color: chatDelegate.isSelected ? Theme.primaryText : Theme.accentText
-                  font.pixelSize: 10
+                  font.pixelSize: Math.max(8, Theme.uiFontSize - 3)
                   font.bold: true
                 }
               }
@@ -364,7 +364,7 @@ Item {
                     id: tagLabel
                     anchors.centerIn: parent
                     text: parent.modelData
-                    font.pixelSize: 9
+                    font.pixelSize: Math.max(8, Theme.uiFontSize - 4)
                     color: chatDelegate.isSelected ? Theme.accentText : Theme.accent
                   }
                 }
@@ -515,7 +515,7 @@ Item {
           contentItem: Text {
             text: parent.text
             color: Theme.primaryText
-            font.pixelSize: 13
+            font.pixelSize: Theme.uiFontSize
             verticalAlignment: Text.AlignVCenter
             leftPadding: 12
             rightPadding: 12
@@ -534,7 +534,7 @@ Item {
           contentItem: Text {
             text: parent.text
             color: Theme.primaryText
-            font.pixelSize: 13
+            font.pixelSize: Theme.uiFontSize
             verticalAlignment: Text.AlignVCenter
             leftPadding: 12
             rightPadding: 12
@@ -573,7 +573,7 @@ Item {
             Label {
               text: "Delete Chat"
               color: "#FF5252"
-              font.pixelSize: 13
+              font.pixelSize: Theme.uiFontSize
               font.bold: true
               verticalAlignment: Text.AlignVCenter
               Layout.fillWidth: true
@@ -594,7 +594,7 @@ Item {
         visible: chatList.count === 0
         text: "No chats found"
         color: Theme.secondaryText
-        font.pixelSize: 14
+        font.pixelSize: Theme.uiFontSize + 1
       }
     }
   }
