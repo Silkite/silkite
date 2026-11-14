@@ -140,6 +140,7 @@ TelegramClient::TelegramClient(QObject *parent)
 
     handleReceived(m_activeChatId, m_conversationMessages, m_messageModel, [this]() { emit conversationMessagesChanged(); });
     handleReceived(m_secondaryActiveChatId, m_secondaryConversationMessages, m_secondaryMessageModel, [this]() { emit secondaryConversationMessagesChanged(); });
+    emit messageReceived(chatId, message);
   });
 
   connect(&m_worker, &TelegramWorker::messageSendSucceeded, this, [this, resolveReplyInfo](qint64 chatId, qint64 oldId, const QVariantMap &message) {

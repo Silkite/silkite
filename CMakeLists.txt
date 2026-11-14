@@ -14,6 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS
   Quick
   Qml
   QuickControls2
+  DBus
 )
 
 find_package(Td REQUIRED CONFIG
@@ -50,6 +51,10 @@ qt_add_executable(silkite
   src/telegram/telegram_worker.cpp
   src/telegram/telegram_worker.h
 
+  src/notifications/notification_portal_manager.cpp
+  src/notifications/notification_portal_manager.h
+  src/notifications/notification_service.cpp
+  src/notifications/notification_service.h
 )
 
 qt_add_qml_module(silkite
@@ -128,6 +133,7 @@ target_link_libraries(silkite
     Qt6::Quick
     Qt6::Qml
     Qt6::QuickControls2
+    Qt6::DBus
     Td::TdStatic
     ${QRENCODE_LIBRARY}
 )

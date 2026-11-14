@@ -51,13 +51,35 @@ Item {
     unreadIncomingCount = 0
     if (messageListView.count === 0) return
     lastKnownAtBottom = true
-    messageListView.positionViewAtEnd()
+    scheduleBottomScroll(true)
   }
 
   function scheduleBottomScroll(animated) {
     if (messageListView.count === 0) return
     lastKnownAtBottom = true
-    messageListView.positionViewAtEnd()
+
+    if (!animated) {
+      scrollAnimation.stop()
+      messageListView.positionViewAtEnd()
+      return
+    }
+
+    Qt.callLater(function() {
+      if (messageListView.count === 0 || !lastKnownAtBottom) return
+      var maxY = messageListView.originY + messageListView.contentHeight - messageListView.height + messageListView.bottomMargin
+      var minY = messageListView.originY - messageListView.topMargin
+      var targetY = Math.max(minY, maxY)
+
+      if (Math.abs(messageListView.contentY - targetY) < 2) {
+        messageListView.contentY = targetY
+        return
+      }
+
+      scrollAnimation.stop()
+      scrollAnimation.from = messageListView.contentY
+      scrollAnimation.to = targetY
+      scrollAnimation.start()
+    })
   }
 
   onChatIdChanged: {
@@ -784,7 +806,19 @@ Item {
         }
 
         onDragStarted: {
+          scrollAnimation.stop()
           root.lastKnownAtBottom = false
+        }
+
+        NumberAnimation {
+          id: scrollAnimation
+          target: messageListView
+          property: "contentY"
+          duration: 220
+          easing.type: Easing.OutCubic
+          onFinished: {
+            root.lastKnownAtBottom = root.isScrolledToBottom()
+          }
         }
 
         ScrollBar.vertical: ScrollBar {

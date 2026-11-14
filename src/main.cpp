@@ -10,6 +10,8 @@
 #include "models/global_search_model.h"
 #include "theme/theme_manager.h"
 #include "telegram/telegram_client.h"
+#include "notifications/notification_portal_manager.h"
+#include "notifications/notification_service.h"
 
 int main(int argc, char *argv[]) {
   QQuickWindow::setDefaultAlphaBuffer(true);
@@ -55,6 +57,12 @@ int main(int argc, char *argv[]) {
   // Connect global search signals
   QObject::connect(&telegramClient, &TelegramClient::localSearchResults, &globalSearchModel, &GlobalSearchModel::setLocalResults);
   QObject::connect(&telegramClient, &TelegramClient::globalSearchResults, &globalSearchModel, &GlobalSearchModel::setGlobalResults);
+
+  // Notification management (Qt D-Bus via XDG portal)
+  NotificationPortalManager portalManager;
+  NotificationService notificationService(&portalManager, &chatListModel, &telegramClient);
+  QObject::connect(&telegramClient, &TelegramClient::messageReceived,
+                   &notificationService, &NotificationService::onIncomingMessage);
 
   QQmlApplicationEngine engine;
 
